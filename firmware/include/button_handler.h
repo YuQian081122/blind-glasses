@@ -1,5 +1,8 @@
 /**
- * 按鈕處理 - 風景、紅綠燈，支援 debounce 與長按
+ * 按鈕處理 - 電源鍵 + 切換鍵
+ * 電源鍵：短按=紅綠燈，長按 5 秒=開/關機
+ * 切換鍵：短按=模式切換，長按 5 秒=AI 語音助理
+ * 其餘功能（場景辨識、物品搜尋、導航）需先喚起 AI 語音助理再下達指令
  */
 
 #ifndef BUTTON_HANDLER_H
@@ -10,12 +13,8 @@
 // 按鈕事件
 enum class ButtonEvent : uint8_t {
   None,
-  SceneryShort,    // 風景 (電源鍵短按)
-  SceneryLong,     // 語音 (電源鍵長按)
-  TrafficShort,    // 紅綠燈 (電源鍵三擊)
-  TrafficLong,     // 同 TrafficShort
-  ItemSearchShort, // 物品查找 (電源鍵雙擊)
-  ItemSearchLong,  // 同 ItemSearchShort
+  SceneryLong,     // AI 語音助理 (切換鍵長按 5 秒) -> 喚起後用語音下達指令
+  TrafficShort,    // 紅綠燈辨識 (電源鍵短按)
   ModeSwitch,      // 模式切換 (切換鍵短按)
   PowerToggle      // 開/關機 (電源鍵長按 5 秒)
 };

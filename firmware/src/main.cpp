@@ -1,33 +1,30 @@
-// 測試程式：D8->D2 loopback + 內建 RGB LED + 每 5 秒向伺服器回報
+/**
+ * AI 智慧導盲眼鏡 - 主程式
+ * 按鍵：電源鍵短按=紅綠燈、長按=開關機；切換鍵短按=模式、長按=AI 語音助理
+ */
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <HTTPClient.h>
-#include <Adafruit_NeoPixel.h>
+#include <esp_sleep.h>
+#include "driver/rtc_io.h"
 
 #include "config.h"
+#include "op_mode.h"
 #include "udp_discovery.h"
+#include "camera_stream.h"
+#include "button_handler.h"
+#include "audio_player.h"
+#include "server_api.h"
+#include "imu_stream.h"
+#include "mic_upload.h"
+#include "gps_stream.h"
 
-// XIAO ESP32S3 Sense 上的 RGB LED 接在 GPIO21
-static const int LED_PIN = 21;
-static const int LED_COUNT = 1;
+static unsigned long lastAudioTriggerTime = 0;
+static const unsigned long AUDIO_FETCH_DELAY_MS = 3000;
+static bool singleBtnVoiceThenMonitor = false;
+static bool voicePlaybackStarted = false;
 
-// D8 當輸出、D2 當輸入（你已經用杜邦線把兩腳對接）
-static const int TX_PIN = D8;
-static const int RX_PIN = D2;
-
-// 每 5 秒向伺服器回報一次
-static const unsigned long REPORT_INTERVAL_MS = 5000;
-static unsigned long lastReportTime = 0;
-
-Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
-
-void setLedColor(uint8_t r, uint8_t g, uint8_t b) {
-  strip.setPixelColor(0, strip.Color(r, g, b));
-  strip.show();
-}
-
-void connectWifi() {
+void setupWifi() {
   Serial.print("Connecting to WiFi ");
   Serial.println(WIFI_SSID);
   WiFi.mode(WIFI_STA);
@@ -40,91 +37,127 @@ void connectWifi() {
     retry++;
   }
 
-  Serial.println();
   if (WiFi.status() == WL_CONNECTED) {
+    Serial.println();
     Serial.println("WiFi connected");
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
+#if POWER_SAVE_ENABLE && WIFI_MODEM_SLEEP
+    WiFi.setSleep(true);
+    Serial.println("[PWR] WiFi modem sleep on");
+#endif
+    Serial.print("Stream URL: http://");
+    Serial.print(WiFi.localIP());
+    Serial.print(":");
+    Serial.print(STREAM_PORT);
+    Serial.println(STREAM_PATH);
   } else {
+    Serial.println();
     Serial.println("WiFi connect failed!");
   }
-}
-
-void sendReportToServer(bool ok) {
-  if (!UdpDiscovery::hasServer()) return;
-  IPAddress ip = UdpDiscovery::getServerIP();
-
-  String url = String("http://") + ip.toString() + ":" + String(SERVER_HTTP_PORT) + "/api/gpio_test";
-  HTTPClient http;
-  http.begin(url);
-  http.addHeader("Content-Type", "application/json");
-
-  String body = String("{\"ok\":") + (ok ? "true" : "false") + "}";
-  int code = http.POST(body);
-  Serial.printf("[TEST] POST %s -> %d, body=%s\n", url.c_str(), code, body.c_str());
-  http.end();
 }
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  Serial.println("\n=== D8-D2 Loopback + RGB LED + Server Test ===");
+  Serial.println("\n=== AI Smart Blind Glasses ===");
 
-  pinMode(TX_PIN, OUTPUT);
-  pinMode(RX_PIN, INPUT_PULLUP);
+  OpMode::begin();
+  Serial.printf("[OP] Mode: %s\n", OpMode::isSingleButton() ? "SINGLE_BTN" : "ALWAYS_ON");
 
-  strip.begin();
-  strip.clear();
-  strip.show();
+  setupWifi();
+  UdpDiscovery::begin();
+  ButtonHandler::begin();
+  AudioPlayer::begin();
+  MicUpload::begin();
 
-  // 開機時先亮白色 1 秒，表示程式有跑起來
-  setLedColor(50, 50, 50);
-  delay(1000);
-  setLedColor(0, 0, 0);
-
-  connectWifi();
   if (WiFi.status() == WL_CONNECTED) {
-    UdpDiscovery::begin();
+#if POWER_SAVE_ENABLE
+    if (OpMode::isAlwaysOn()) {
+#endif
+      if (CameraStream::begin()) {
+        Serial.println("[CAM] Ready");
+      } else {
+        Serial.println("[CAM] Init failed");
+      }
+#if POWER_SAVE_ENABLE
+    } else {
+      Serial.println("[PWR] Camera off in SINGLE_BTN (power save)");
+    }
+#endif
   }
+  ImuStream::begin();
+  GpsStream::begin();
 }
 
 void loop() {
-  if (WiFi.status() == WL_CONNECTED) {
-    UdpDiscovery::tick();
+  UdpDiscovery::tick();
+  AudioPlayer::tick();
+  MicUpload::tick();
+  if (UdpDiscovery::hasServer()) {
+    IPAddress ip = UdpDiscovery::getServerIP();
+    ImuStream::setServerIP(ip);
+    GpsStream::setServerIP(ip);
+    ImuStream::tick();
+    GpsStream::tick();
   }
 
-  // 發送 HIGH
-  digitalWrite(TX_PIN, HIGH);
-  delay(10);
-  int valHigh = digitalRead(RX_PIN);
-
-  // 發送 LOW
-  digitalWrite(TX_PIN, LOW);
-  delay(10);
-  int valLow = digitalRead(RX_PIN);
-
-  Serial.print("TX=D8 HIGH-> RX(D2)=");
-  Serial.print(valHigh);
-  Serial.print(" , LOW->");
-  Serial.println(valLow);
-
-  bool ok = (valHigh == HIGH && valLow == LOW);
-
-  // 根據 loopback 結果改變 LED 顏色
-  if (ok) {
-    // RX 跟著變化 => 連線正常，亮綠燈
-    setLedColor(0, 50, 0);
-  } else {
-    // 讀值怪怪的 => 亮紅燈
-    setLedColor(50, 0, 0);
+  ButtonEvent evt = ButtonHandler::tick();
+  if (evt == ButtonEvent::PowerToggle) {
+    Serial.println("[PWR] Power off - deep sleep. Press power button to wake.");
+    rtc_gpio_pulldown_dis((gpio_num_t)BTN_POWER_PIN);
+    rtc_gpio_pullup_en((gpio_num_t)BTN_POWER_PIN);
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)BTN_POWER_PIN, 0);
+    esp_deep_sleep_start();
+  } else if (evt == ButtonEvent::ModeSwitch) {
+    OpMode::toggle();
+#if POWER_SAVE_ENABLE
+    if (OpMode::isAlwaysOn() && !CameraStream::isReady() && WiFi.status() == WL_CONNECTED) {
+      if (CameraStream::begin()) Serial.println("[CAM] Ready (mode switch)");
+    }
+#endif
+  } else if (evt != ButtonEvent::None && UdpDiscovery::hasServer()) {
+    IPAddress ip = UdpDiscovery::getServerIP();
+#if POWER_SAVE_ENABLE
+    if (OpMode::isSingleButton() && !CameraStream::isReady() && WiFi.status() == WL_CONNECTED) {
+      if (evt == ButtonEvent::TrafficShort || evt == ButtonEvent::SceneryLong) {
+        if (CameraStream::begin()) Serial.println("[CAM] Ready (first use)");
+      }
+    }
+#endif
+    if (evt == ButtonEvent::TrafficShort) {
+      ServerAPI::requestGemini(ip, "light");
+      lastAudioTriggerTime = millis();
+    } else if (evt == ButtonEvent::SceneryLong) {
+      if (OpMode::isSingleButton()) singleBtnVoiceThenMonitor = true;
+      MicUpload::startRecording();
+    }
   }
 
-  // 每 5 秒（且 loopback ok）向伺服器回報一次
-  unsigned long now = millis();
-  if (ok && now - lastReportTime >= REPORT_INTERVAL_MS) {
-    lastReportTime = now;
-    sendReportToServer(ok);
+  bool fromButton = lastAudioTriggerTime > 0 && (millis() - lastAudioTriggerTime >= AUDIO_FETCH_DELAY_MS);
+  bool fromAsr = MicUpload::hasPendingAudioFetch() && MicUpload::shouldFetchAudio();
+  if ((fromButton || fromAsr) && !AudioPlayer::isPlaying() && UdpDiscovery::hasServer()) {
+    if (singleBtnVoiceThenMonitor) voicePlaybackStarted = true;
+    lastAudioTriggerTime = 0;
+    MicUpload::clearPendingAudioFetch();
+    AudioPlayer::playFromServer(UdpDiscovery::getServerIP());
   }
 
-  delay(500);
+  if (singleBtnVoiceThenMonitor && voicePlaybackStarted && !AudioPlayer::isPlaying()) {
+    singleBtnVoiceThenMonitor = false;
+    voicePlaybackStarted = false;
+    OpMode::set(OP_MODE_ALWAYS_ON);
+#if POWER_SAVE_ENABLE
+    if (!CameraStream::isReady() && CameraStream::begin()) {
+      Serial.println("[CAM] Ready (power save -> ALWAYS_ON)");
+    }
+#endif
+    Serial.println("[OP] Voice done -> ALWAYS_ON (monitoring)");
+  }
+
+  unsigned long idleMs = LOOP_IDLE_MS_NORMAL;
+#if POWER_SAVE_ENABLE
+  if (!AudioPlayer::isPlaying()) idleMs = LOOP_IDLE_MS;
+#endif
+  delay(idleMs);
 }
