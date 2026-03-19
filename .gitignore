@@ -1,0 +1,8 @@
+# 僅追蹤 firmware，其餘忽略
+.vscode/
+Arduino/
+server/
+server.zip
+docs/
+*.pdf
+pyrightconfig.json
