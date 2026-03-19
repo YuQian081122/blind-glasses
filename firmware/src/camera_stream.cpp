@@ -1,0 +1,161 @@
+/**
+ * OV3660 MJPEG 串流實作
+ * XIAO ESP32-S3 Sense 腳位
+ */
+
+#include "camera_stream.h"
+#include "config.h"
+
+#include "esp_camera.h"
+#include "esp_http_server.h"
+#include "esp_timer.h"
+
+// XIAO ESP32-S3 Sense 相機腳位 (Seeed Wiki)
+#define PWDN_GPIO_NUM   -1
+#define RESET_GPIO_NUM  -1
+#define XCLK_GPIO_NUM   10
+#define SIOD_GPIO_NUM   40
+#define SIOC_GPIO_NUM   39
+#define Y9_GPIO_NUM     48
+#define Y8_GPIO_NUM     11
+#define Y7_GPIO_NUM     12
+#define Y6_GPIO_NUM     14
+#define Y5_GPIO_NUM     16
+#define Y4_GPIO_NUM     18
+#define Y3_GPIO_NUM     17
+#define Y2_GPIO_NUM     15
+#define VSYNC_GPIO_NUM  38
+#define HREF_GPIO_NUM   47
+#define PCLK_GPIO_NUM   13
+
+static httpd_handle_t streamServer = NULL;
+static bool streamReady = false;
+
+static esp_err_t streamHandler(httpd_req_t* req) {
+  camera_fb_t* fb = NULL;
+  esp_err_t res = ESP_OK;
+  size_t _jpg_buf_len = 0;
+  uint8_t* _jpg_buf = NULL;
+  char* part_buf[64];
+
+  static const char* _STREAM_CONTENT_TYPE = "multipart/x-mixed-replace; boundary=frame";
+  static const char* _STREAM_BOUNDARY = "\r\n--frame\r\nContent-Type: image/jpeg\r\n\r\n";
+
+  res = httpd_resp_set_type(req, _STREAM_CONTENT_TYPE);
+  if (res != ESP_OK) return res;
+
+  while (true) {
+    fb = esp_camera_fb_get();
+    if (!fb) {
+      Serial.println("[CAM] Frame capture failed");
+      res = ESP_FAIL;
+      break;
+    }
+
+    if (fb->format == PIXFORMAT_JPEG) {
+      _jpg_buf_len = fb->len;
+      _jpg_buf = fb->buf;
+    } else {
+      bool jpeg_converted = frame2jpg(fb, 12, &_jpg_buf, &_jpg_buf_len);
+      if (!jpeg_converted) {
+        esp_camera_fb_return(fb);
+        Serial.println("[CAM] JPEG convert failed");
+        res = ESP_FAIL;
+        break;
+      }
+    }
+
+    res = httpd_resp_send_chunk(req, _STREAM_BOUNDARY, strlen(_STREAM_BOUNDARY));
+    if (res != ESP_OK) break;
+
+    size_t hlen = snprintf((char*)part_buf, 64, "Content-Length: %u\r\n\r\n", (uint32_t)(_jpg_buf_len));
+    res = httpd_resp_send_chunk(req, (const char*)part_buf, hlen);
+    if (res != ESP_OK) break;
+
+    res = httpd_resp_send_chunk(req, (const char*)_jpg_buf, _jpg_buf_len);
+    if (res != ESP_OK) break;
+
+    if (fb->format != PIXFORMAT_JPEG && _jpg_buf) {
+      free(_jpg_buf);
+    }
+    esp_camera_fb_return(fb);
+    fb = NULL;
+
+    // 防 buffer overflow (OV3660 建議 30ms)
+    delay(30);
+  }
+
+  if (fb) esp_camera_fb_return(fb);
+  return res;
+}
+
+static void startStreamServer() {
+  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+  config.server_port = STREAM_PORT;
+  config.ctrl_port = STREAM_PORT;
+  config.max_open_sockets = 2;
+  config.max_uri_handlers = 2;
+
+  if (httpd_start(&streamServer, &config) == ESP_OK) {
+    httpd_uri_t stream_uri = {
+      .uri = STREAM_PATH,
+      .method = HTTP_GET,
+      .handler = streamHandler,
+      .user_ctx = NULL
+    };
+    httpd_register_uri_handler(streamServer, &stream_uri);
+    Serial.print("[CAM] Stream server on port ");
+    Serial.println(STREAM_PORT);
+  } else {
+    Serial.println("[CAM] Failed to start stream server");
+  }
+}
+
+bool CameraStream::begin() {
+  camera_config_t config = {};
+  config.pin_pwdn = PWDN_GPIO_NUM;
+  config.pin_reset = RESET_GPIO_NUM;
+  config.pin_xclk = XCLK_GPIO_NUM;
+  config.pin_sccb_sda = SIOD_GPIO_NUM;
+  config.pin_sccb_scl = SIOC_GPIO_NUM;
+  config.pin_d7 = Y9_GPIO_NUM;
+  config.pin_d6 = Y8_GPIO_NUM;
+  config.pin_d5 = Y7_GPIO_NUM;
+  config.pin_d4 = Y6_GPIO_NUM;
+  config.pin_d3 = Y5_GPIO_NUM;
+  config.pin_d2 = Y4_GPIO_NUM;
+  config.pin_d1 = Y3_GPIO_NUM;
+  config.pin_d0 = Y2_GPIO_NUM;
+  config.pin_vsync = VSYNC_GPIO_NUM;
+  config.pin_href = HREF_GPIO_NUM;
+  config.pin_pclk = PCLK_GPIO_NUM;
+  config.xclk_freq_hz = 20000000;
+  config.ledc_timer = LEDC_TIMER_0;
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.pixel_format = PIXFORMAT_JPEG;
+  config.frame_size = FRAMESIZE_VGA;   // 640x480, 平衡品質與效能
+  config.jpeg_quality = 12;
+  config.fb_count = 2;                 // OV3660 建議 2
+  config.fb_location = CAMERA_FB_IN_PSRAM;
+  config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+
+  esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK) {
+    Serial.printf("[CAM] Init failed: 0x%x\n", err);
+    return false;
+  }
+
+  sensor_t* s = esp_camera_sensor_get();
+  if (s) {
+    s->set_brightness(s, 0);
+    s->set_contrast(s, 0);
+  }
+
+  startStreamServer();
+  streamReady = true;
+  return true;
+}
+
+bool CameraStream::isReady() {
+  return streamReady;
+}
