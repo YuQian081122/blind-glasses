@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Blind Glasses 韌體指令面板</title>
+  <style>
+    body {
+      font-family: "Segoe UI", "Noto Sans TC", sans-serif;
+      margin: 24px;
+      background: #0b1020;
+      color: #e8ecff;
+    }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    p { margin: 0 0 16px; color: #b9c1e6; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 14px;
+    }
+    .card {
+      background: #141b34;
+      border: 1px solid #29325e;
+      border-radius: 10px;
+      padding: 14px;
+    }
+    .tag {
+      display: inline-block;
+      font-size: 12px;
+      color: #88a0ff;
+      border: 1px solid #40519f;
+      border-radius: 999px;
+      padding: 2px 8px;
+      margin-bottom: 8px;
+    }
+    .title { font-size: 16px; margin: 0 0 8px; }
+    .desc { font-size: 14px; color: #b9c1e6; margin: 0 0 10px; }
+    pre {
+      margin: 0 0 10px;
+      background: #0b1129;
+      border: 1px solid #29325e;
+      border-radius: 8px;
+      padding: 10px;
+      overflow-x: auto;
+      color: #d9e7ff;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    button {
+      background: #3f5fff;
+      color: #fff;
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button:active { transform: translateY(1px); }
+    .ok {
+      margin-left: 8px;
+      color: #8df0a9;
+      font-size: 13px;
+      visibility: hidden;
+    }
+  </style>
+</head>
+<body>
+  <h1>韌體指令面板（PowerShell）</h1>
+  <p>依序執行即可。每個區塊都可單獨複製。適用專案：blind_glasses / firmware。</p>
+
+  <div class="grid">
+    <div class="card">
+      <span class="tag">Step 1</span>
+      <h2 class="title">切到 firmware 目錄</h2>
+      <p class="desc">確保所有 PlatformIO 指令在正確路徑執行。</p>
+      <pre id="cmd1">cd C:\Users\sl131\Downloads\blind_glasses\firmware</pre>
+      <button onclick="copyCmd('cmd1', 'ok1')">複製指令</button><span id="ok1" class="ok">已複製</span>
+    </div>
+
+    <div class="card">
+      <span class="tag">Step 2</span>
+      <h2 class="title">編譯韌體</h2>
+      <p class="desc">先確認程式可正常編譯，再進行燒錄。</p>
+      <pre id="cmd2">cd C:\Users\sl131\Downloads\blind_glasses\firmware
+pio run</pre>
+      <button onclick="copyCmd('cmd2', 'ok2')">複製指令</button><span id="ok2" class="ok">已複製</span>
+    </div>
+
+    <div class="card">
+      <span class="tag">Step 3</span>
+      <h2 class="title">燒錄到 ESP32-S3</h2>
+      <p class="desc">自動偵測 COM port 並上傳韌體。</p>
+      <pre id="cmd3">cd C:\Users\sl131\Downloads\blind_glasses\firmware
+pio run -t upload</pre>
+      <button onclick="copyCmd('cmd3', 'ok3')">複製指令</button><span id="ok3" class="ok">已複製</span>
+    </div>
+
+    <div class="card">
+      <span class="tag">Step 4</span>
+      <h2 class="title">開啟 Serial Monitor</h2>
+      <p class="desc">監看 IMU 診斷輸出（115200）。</p>
+      <pre id="cmd4">cd C:\Users\sl131\Downloads\blind_glasses\firmware
+pio device monitor -b 115200</pre>
+      <button onclick="copyCmd('cmd4', 'ok4')">複製指令</button><span id="ok4" class="ok">已複製</span>
+    </div>
+
+    <div class="card">
+      <span class="tag">IMU Test</span>
+      <h2 class="title">啟用 IMU 單獨測試（目前已開）</h2>
+      <p class="desc">目前 `include/config.h` 內 `IMU_STANDALONE_TEST=1`，可直接燒錄測試。</p>
+      <pre id="cmd5">cd C:\Users\sl131\Downloads\blind_glasses\firmware
+pio run -t upload
+pio device monitor -b 115200</pre>
+      <button onclick="copyCmd('cmd5', 'ok5')">複製指令</button><span id="ok5" class="ok">已複製</span>
+    </div>
+
+    <div class="card">
+      <span class="tag">Optional</span>
+      <h2 class="title">回復一般模式</h2>
+      <p class="desc">把 `IMU_STANDALONE_TEST` 改回 `0` 後，重新燒錄。</p>
+      <pre id="cmd6">cd C:\Users\sl131\Downloads\blind_glasses\firmware
+pio run -t upload</pre>
+      <button onclick="copyCmd('cmd6', 'ok6')">複製指令</button><span id="ok6" class="ok">已複製</span>
+    </div>
+
+    <div class="card">
+      <span class="tag">Optional</span>
+      <h2 class="title">清理建置快取</h2>
+      <p class="desc">遇到奇怪編譯問題時可先 clean 再 build。</p>
+      <pre id="cmd7">cd C:\Users\sl131\Downloads\blind_glasses\firmware
+pio run -t clean
+pio run</pre>
+      <button onclick="copyCmd('cmd7', 'ok7')">複製指令</button><span id="ok7" class="ok">已複製</span>
+    </div>
+  </div>
+
+  <script>
+    async function copyCmd(preId, okId) {
+      const text = document.getElementById(preId).innerText;
+      const ok = document.getElementById(okId);
+      try {
+        await navigator.clipboard.writeText(text);
+        ok.style.visibility = "visible";
+        setTimeout(() => ok.style.visibility = "hidden", 1200);
+      } catch (e) {
+        alert("複製失敗，請手動複製。");
+      }
+    }
+  </script>
+</body>
+</html>

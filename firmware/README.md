@@ -28,17 +28,24 @@
 
 ## 硬體接線
 
-| 模組 | 腳位 (config.h) |
-|------|-----------------|
-| 電源鍵 | D1 (GPIO 35) |
-| 切換鍵 | D2 (GPIO 37) |
-| MAX98357A BCLK | D3 (GPIO 36) |
-| MAX98357A LRC | D5 (GPIO 34) |
-| MAX98357A DIN | D7 (GPIO 43) |
-| IMU SDA/SCL | GPIO 7 / 8 (I2C) |
-| GPS TX/RX | GPIO 44 / 45 (UART) |
+以下 **D0–D12 ↔ GPIO** 與 Seeed [XIAO ESP32-S3 Getting Started](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/) 主表一致；本專案實際使用欄標示 `config.h`。
 
-請依實際接線修改 `include/config.h`。
+| XIAO 絲印 | 晶片 GPIO | 本專案用途 |
+|-----------|-----------|------------|
+| D0 | 1 | I2S 資料 → MAX98357A DIN `I2S_DOUT_PIN` |
+| D1 | 2 | 電源鍵 `BTN_POWER_PIN` |
+| D2 | 3 | 切換鍵 `BTN_MODE_PIN` |
+| D4 / SDA | 5 | IMU SDA `IMU_SDA_PIN` |
+| D5 / SCL | 6 | IMU SCL `IMU_SCL_PIN` |
+| D6 / TX | 43 | GPS：ESP UART TX → 模組 RX `GPS_TX_PIN` |
+| D7 / RX | 44 | GPS：ESP UART RX ← 模組 TX `GPS_RX_PIN` |
+| （未列於 D0–D12 主表） | 36 | I2S BCLK `I2S_BCLK_PIN`（請對 Sense 全腳位圖焊接） |
+| （未列於 D0–D12 主表） | 34 | I2S LRC/WS `I2S_LRC_PIN`（同上） |
+| MTDO 等 / Camera SCCB | 40 / 39 | 相機 I2C SDA/SCL（OV3660，見 Wiki Camera 表） |
+| Camera DVP | 10–18, 38, 47, 48 等 | 內建鏡頭排線，見 `camera_stream.cpp` |
+| 內建 PDM 麥克風 | 41 / 42 | DATA / CLK（`mic_upload.cpp`，與表列 Digital microphone 一致） |
+
+若你外接線與上表不同，請只改 `include/config.h`（與必要時 `camera_stream.cpp`）。
 
 ## 省電
 
@@ -67,6 +74,37 @@
 | MAX98357 I2S | 僅播放時耗電；無硬體 shutdown 時不送訊號即省電 |
 | ICM-20948（陀螺儀） | 韌體已支援；I2C 位址 0x68（AD0 接 GND）或 0x69（AD0 接 VCC） |
 | 2.4G 天線、有源陶瓷天線 | 天線收訊好可減少重試，間接省電 |
+
+## IMU 單獨測試（連接診斷）
+
+當你要確認「陀螺儀到底壞在哪一層」時，可啟用單獨測試模式，避免 WiFi/伺服器影響判斷。
+
+### 啟用方式
+
+1. 編輯 `include/config.h`
+2. 設定：
+   - `IMU_STANDALONE_TEST = 1`
+   - （可選）`IMU_TEST_OUTPUT_INTERVAL_MS` 調整輸出頻率
+3. 重新燒錄，開啟 Serial Monitor（115200）
+
+啟用後，韌體只會啟動 IMU 診斷流程，略過 WiFi/Camera/GPS/Mic/Audio/UDP。
+
+### 診斷輸出 CASE 對照
+
+| 訊息 | 判讀 |
+|------|------|
+| `CASE_A` | I2C scan 無任何 ACK：先查 VCC/GND、SDA/SCL 是否接反、是否共地、是否有上拉 |
+| `CASE_B` | 有 ACK 但非 0x68/0x69：可能接錯裝置、線路衝突或匯流排干擾 |
+| `CASE_C` | 0x68/0x69 有 ACK 但 init 失敗：優先查 AD0 狀態、焊接品質、供電穩定性 |
+| `CASE_D` | 初始化成功但 `getAGMT` 常失敗：可能是接觸不良、線太長或訊號品質差 |
+| `CASE_E` | 連續 gyro 幾乎不變：請手動旋轉模組，若仍不變可能是感測器本體/讀值路徑異常 |
+
+### 快速檢查流程
+
+1. 看是否印出 `[IMU-TEST] Standalone mode begin`
+2. 看 I2C scan 是否有 `0x68` 或 `0x69`
+3. 看是否印出 `[IMU] Ready`
+4. 手動旋轉 IMU，觀察 `gx/gy/gz` 是否連續變化
 
 ## 建置
 

@@ -10,7 +10,7 @@
 namespace OpMode {
 
   static Preferences prefs;
-  static uint8_t currentMode = OP_MODE_SINGLE_BTN;
+  static uint8_t currentMode = OP_MODE_DEFAULT;
 
   uint8_t get() {
     return currentMode;
@@ -33,8 +33,12 @@ namespace OpMode {
   }
 
   void begin() {
-    prefs.begin("blind_glasses", true);
-    currentMode = prefs.getUChar("op_mode", OP_MODE_SINGLE_BTN);
+    // readOnly=true 在命名空間尚未建立時會 nvs_open NOT_FOUND；改用 RW 以便首次開機建立
+    if (!prefs.begin("blind_glasses", false)) {
+      currentMode = OP_MODE_DEFAULT;
+      return;
+    }
+    currentMode = prefs.getUChar("op_mode", OP_MODE_DEFAULT);
     prefs.end();
   }
 

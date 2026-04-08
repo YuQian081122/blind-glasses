@@ -8,14 +8,15 @@
 
 #include "esp_camera.h"
 #include "esp_http_server.h"
+#include "esp_task_wdt.h"
 #include "esp_timer.h"
 
-// XIAO ESP32-S3 Sense 相機腳位 (Seeed Wiki)
+// OV3660 DVP：GPIO10 XCLK, 11–18/48 資料線, 13 PCLK, 38 VSYNC, 47 HREF；SCCB 見 config.h CAMERA_SIOD_PIN / CAMERA_SIOC_PIN
 #define PWDN_GPIO_NUM   -1
 #define RESET_GPIO_NUM  -1
 #define XCLK_GPIO_NUM   10
-#define SIOD_GPIO_NUM   40
-#define SIOC_GPIO_NUM   39
+#define SIOD_GPIO_NUM   CAMERA_SIOD_PIN
+#define SIOC_GPIO_NUM   CAMERA_SIOC_PIN
 #define Y9_GPIO_NUM     48
 #define Y8_GPIO_NUM     11
 #define Y7_GPIO_NUM     12
@@ -36,10 +37,11 @@ static esp_err_t streamHandler(httpd_req_t* req) {
   esp_err_t res = ESP_OK;
   size_t _jpg_buf_len = 0;
   uint8_t* _jpg_buf = NULL;
-  char* part_buf[64];
+  char part_buf[128];
 
   static const char* _STREAM_CONTENT_TYPE = "multipart/x-mixed-replace; boundary=frame";
-  static const char* _STREAM_BOUNDARY = "\r\n--frame\r\nContent-Type: image/jpeg\r\n\r\n";
+  // 須與伺服器 stream_manager 一致：同一個 multipart 區塊內含 Content-Type + Content-Length，再接 JPEG body
+  static const char* _STREAM_BOUNDARY = "\r\n--frame\r\n";
 
   res = httpd_resp_set_type(req, _STREAM_CONTENT_TYPE);
   if (res != ESP_OK) return res;
@@ -68,7 +70,11 @@ static esp_err_t streamHandler(httpd_req_t* req) {
     res = httpd_resp_send_chunk(req, _STREAM_BOUNDARY, strlen(_STREAM_BOUNDARY));
     if (res != ESP_OK) break;
 
-    size_t hlen = snprintf((char*)part_buf, 64, "Content-Length: %u\r\n\r\n", (uint32_t)(_jpg_buf_len));
+    size_t hlen = snprintf(
+        (char*)part_buf,
+        sizeof(part_buf),
+        "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
+        (uint32_t)(_jpg_buf_len));
     res = httpd_resp_send_chunk(req, (const char*)part_buf, hlen);
     if (res != ESP_OK) break;
 
@@ -92,7 +98,8 @@ static esp_err_t streamHandler(httpd_req_t* req) {
 static void startStreamServer() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = STREAM_PORT;
-  config.ctrl_port = STREAM_PORT;
+  // 控制埠不可與串流埠相同，否則部分 ESP-IDF 版本 httpd_start 會失敗
+  config.ctrl_port = STREAM_PORT + 1;
   config.max_open_sockets = 2;
   config.max_uri_handlers = 2;
 
@@ -139,7 +146,9 @@ bool CameraStream::begin() {
   config.fb_location = CAMERA_FB_IN_PSRAM;
   config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
 
+  esp_task_wdt_reset();
   esp_err_t err = esp_camera_init(&config);
+  esp_task_wdt_reset();
   if (err != ESP_OK) {
     Serial.printf("[CAM] Init failed: 0x%x\n", err);
     return false;

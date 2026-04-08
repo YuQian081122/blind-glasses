@@ -6,8 +6,13 @@
 #include "config.h"
 
 #include <Wire.h>
+#include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <stdarg.h>
+#include <math.h>
+#include <math.h>
+#include <math.h>
 
 #include "ICM_20948.h"
 
@@ -17,6 +22,70 @@ namespace ImuStream {
   static IPAddress serverIP(0, 0, 0, 0);
   static unsigned long lastSendTime = 0;
   static bool ready = false;
+  static bool loggedPostOk = false;
+  static unsigned long lastImuDebugMs = 0;
+  static unsigned long lastI2CScanMs = 0;
+  static bool standaloneMode = false;
+  static uint32_t imuReadOkCount = 0;
+  static uint32_t imuReadFailCount = 0;
+
+  // 最近一次 I2C scan 的判斷結果：用於 init fail 時的 CASE 類型輸出
+  static bool i2cHadAnyAck = false;
+  static bool i2cHad68or69 = false;
+
+  static void scanI2CAndPrint() {
+    Serial.printf("[IMU] I2C scan start (SDA=%d SCL=%d)\n", IMU_SDA_PIN, IMU_SCL_PIN);
+    uint8_t found = 0;
+    bool has68 = false;
+    bool has69 = false;
+    for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
+      Wire.beginTransmission(addr);
+      uint8_t err = Wire.endTransmission(); // 0 = ACK
+      if (err == 0) {
+        Serial.printf("[IMU] I2C ACK addr=0x%02X\n", addr);
+        found++;
+        if (addr == 0x68) has68 = true;
+        if (addr == 0x69) has69 = true;
+      }
+    }
+
+    i2cHadAnyAck = (found > 0);
+    i2cHad68or69 = (has68 || has69);
+
+    if (found == 0) {
+      Serial.println("[IMU] I2C scan: no devices ACK (check wiring/pullups/I2C mode)");
+      Serial.println("[IMU][CASE_A] 0x00 ACK：優先檢查 VCC/GND、SDA/SCL 是否接反、是否共地與上拉電阻");
+    } else {
+      if (!i2cHad68or69) {
+        Serial.println("[IMU][CASE_B] 有 ACK 但不在 0x68/0x69：可能接錯裝置或 I2C 總線干擾");
+      } else {
+        Serial.println("[IMU] I2C found IMU addr candidate (0x68/0x69)");
+      }
+      Serial.printf("[IMU] I2C scan done, found=%u\n", found);
+    }
+  }
+
+  static void throttledWarn(const char* msg) {
+    unsigned long now = millis();
+    unsigned long throttle = standaloneMode ? IMU_TEST_FAIL_THROTTLE_MS : 5000;
+    if (now - lastImuDebugMs < throttle) return;
+    lastImuDebugMs = now;
+    Serial.println(msg);
+  }
+
+  static void throttledPrintf(const char* fmt, ...) {
+    unsigned long now = millis();
+    unsigned long throttle = standaloneMode ? IMU_TEST_FAIL_THROTTLE_MS : 5000;
+    if (now - lastImuDebugMs < throttle) return;
+    lastImuDebugMs = now;
+
+    char buf[240];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    Serial.println(buf);
+  }
 
   void setServerIP(IPAddress ip) {
     serverIP = ip;
@@ -26,31 +95,86 @@ namespace ImuStream {
     return ready;
   }
 
+  void beginStandalone() {
+    standaloneMode = true;
+    imuReadOkCount = 0;
+    imuReadFailCount = 0;
+    loggedPostOk = false;
+    Serial.println("[IMU-TEST] Standalone mode begin (no WiFi/HTTP)");
+    begin();
+  }
+
   void begin() {
+    // I2C 線若模組沒有提供 pull-up，掃描會完全沒有 ACK。
+    // 先開啟 ESP32 的內建上拉，讓 SDA/SCL 至少能被拉到預設高電位。
+    pinMode(IMU_SDA_PIN, INPUT_PULLUP);
+    pinMode(IMU_SCL_PIN, INPUT_PULLUP);
+    delay(10);
     Wire.begin(IMU_SDA_PIN, IMU_SCL_PIN);
+    scanI2CAndPrint();
     // AD0=LOW -> 0x68；AD0=HIGH -> 0x69
-    bool ad0val = (IMU_I2C_ADDR == 0x69);
-    if (imu.begin(Wire, ad0val, ICM_20948_ARD_UNUSED_PIN) != ICM_20948_Stat_Ok) {
-      Serial.println("[IMU] Init failed");
+    // 若你不確定 IMU 模組 AD0 腳接哪邊，改成「先嘗試設定的地址；失敗再自動嘗試另一個」會更快定位問題。
+    bool firstAd0 = (IMU_I2C_ADDR == 0x69);
+    uint8_t firstAddr = firstAd0 ? 0x69 : 0x68;
+    uint8_t secondAddr = firstAd0 ? 0x68 : 0x69;
+
+    uint8_t addrOk = 0;
+    if (imu.begin(Wire, firstAd0, ICM_20948_ARD_UNUSED_PIN) == ICM_20948_Stat_Ok) {
+      addrOk = firstAddr;
+    } else if (imu.begin(Wire, !firstAd0, ICM_20948_ARD_UNUSED_PIN) == ICM_20948_Stat_Ok) {
+      addrOk = secondAddr;
+    } else {
+      if (i2cHadAnyAck) {
+        Serial.printf("[IMU][CASE_C] ACK 出現但 Init failed（請檢查焊接/供電/AD0 狀態/上拉品質）(try 0x%02X/0x%02X)\n",
+                      firstAddr, secondAddr);
+      } else {
+        Serial.printf("[IMU] Init failed (no ACK; try 0x%02X/0x%02X). Check wiring/pullups\n", firstAddr, secondAddr);
+      }
       return;
     }
+
     ready = true;
-    Serial.println("[IMU] Ready (ICM-20948)");
+    Serial.printf("[IMU] Ready (ICM-20948) addr=0x%02X\n", addrOk);
   }
 
   void tick() {
-    if (!ready || serverIP == IPAddress(0, 0, 0, 0)) return;
+    if (!ready) {
+      unsigned long now = millis();
+      if (now - lastI2CScanMs > 10000) {
+        lastI2CScanMs = now;
+        scanI2CAndPrint();
+      }
+      if (!standaloneMode && serverIP != IPAddress(0, 0, 0, 0))
+        throttledWarn("[IMU] Not sending: sensor init failed (see boot log [IMU] Init failed)");
+      return;
+    }
+    if (!standaloneMode && serverIP == IPAddress(0, 0, 0, 0)) {
+      throttledWarn("[IMU] Not sending: no server IP yet (wait for UDP)");
+      return;
+    }
 
     unsigned long now = millis();
     unsigned long interval = IMU_SEND_INTERVAL_MS;
 #if POWER_SAVE_ENABLE
     interval = IMU_SEND_INTERVAL_PS_MS;
 #endif
+    if (standaloneMode) {
+      interval = IMU_TEST_OUTPUT_INTERVAL_MS;
+    }
     if (now - lastSendTime < interval) return;
     lastSendTime = now;
 
     imu.getAGMT();
-    if (imu.status != ICM_20948_Stat_Ok) return;
+    if (imu.status != ICM_20948_Stat_Ok) {
+      imuReadFailCount++;
+      if (standaloneMode) {
+        throttledPrintf("[IMU][CASE_D] getAGMT failed, cnt=%lu, status=%d",
+                        (unsigned long)imuReadFailCount, (int)imu.status);
+      } else {
+        throttledWarn("[IMU] I2C read failed (getAGMT); check wiring / IMU_I2C_ADDR");
+      }
+      return;
+    }
     // acc 為 milli-g，換算成 g；gyr 為 dps
     float ax = imu.accX() / 1000.0f;
     float ay = imu.accY() / 1000.0f;
@@ -58,6 +182,18 @@ namespace ImuStream {
     float gx = imu.gyrX();
     float gy = imu.gyrY();
     float gz = imu.gyrZ();
+
+    if (standaloneMode) {
+      imuReadOkCount++;
+      Serial.printf("[IMU-TEST] #%lu ax=%.2fg ay=%.2fg az=%.2fg | gx=%.2fdps gy=%.2fdps gz=%.2fdps\n",
+                    (unsigned long)imuReadOkCount, ax, ay, az, gx, gy, gz);
+      if (imuReadOkCount % 30 == 0) {
+        if (fabsf(gx) < 0.5f && fabsf(gy) < 0.5f && fabsf(gz) < 0.5f) {
+          Serial.println("[IMU][CASE_E] 連續讀值近乎不變，請手動轉動模組，若仍無變化可能為感測器或讀值路徑異常");
+        }
+      }
+      return;
+    }
 
     char url[80];
 #if SERVER_HTTP_PORT == 80
@@ -83,8 +219,23 @@ namespace ImuStream {
     http.begin(url);
     http.addHeader("Content-Type", "application/json");
     http.setTimeout(2000);
+#if POWER_SAVE_ENABLE && WIFI_MODEM_SLEEP
+    WiFi.setSleep(false);
+#endif
     int code = http.POST(body);
+#if POWER_SAVE_ENABLE && WIFI_MODEM_SLEEP
+    WiFi.setSleep(true);
+#endif
     http.end();
+    if (code > 0 && code < 400) {
+      if (!loggedPostOk) {
+        loggedPostOk = true;
+        Serial.println("[IMU] Server receiving IMU (gyro/accel) data");
+      }
+    } else {
+      Serial.printf("[IMU] POST failed: %d (server %d.%d.%d.%d)\n", code,
+                    serverIP[0], serverIP[1], serverIP[2], serverIP[3]);
+    }
   }
 
 }  // namespace ImuStream

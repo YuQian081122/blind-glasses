@@ -1,9 +1,11 @@
-/**
+﻿/**
  * GPS 串流 - NEO-M8N (UART)
  */
 
 #include "gps_stream.h"
 #include "config.h"
+
+#if GPS_ENABLE
 
 #include <HardwareSerial.h>
 #include <HTTPClient.h>
@@ -29,11 +31,18 @@ namespace GpsStream {
   }
 
   void tick() {
-    while (GPSerial.available() > 0) {
+    const int kMaxBytesPerLoop = 256;
+    int drained = 0;
+    while (GPSerial.available() > 0 && drained < kMaxBytesPerLoop) {
       if (gps.encode(GPSerial.read())) {
         if (gps.location.isValid()) break;
       }
+      drained++;
     }
+    if (drained >= kMaxBytesPerLoop) {
+      yield();
+    }
+
     if (serverIP == IPAddress(0, 0, 0, 0) || !gps.location.isValid()) return;
 
     unsigned long now = millis();
@@ -66,8 +75,23 @@ namespace GpsStream {
     http.begin(url);
     http.addHeader("Content-Type", "application/json");
     http.setTimeout(3000);
-    int code = http.POST(body);
+    http.POST(body);
     http.end();
   }
 
 }  // namespace GpsStream
+
+#else  // !GPS_ENABLE
+
+namespace GpsStream {
+
+  void setServerIP(IPAddress) {}
+  bool isReady() { return false; }
+
+  void begin() { Serial.println("[GPS] Disabled (no antenna / not used)"); }
+
+  void tick() {}
+
+}  // namespace GpsStream
+
+#endif  // GPS_ENABLE

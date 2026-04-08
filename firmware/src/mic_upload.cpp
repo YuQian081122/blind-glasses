@@ -11,13 +11,15 @@
 #include <esp_heap_caps.h>
 
 // XIAO Sense PDM: DATA=41, CLK=42
-#define I2S_MIC_PORT       I2S_NUM_1
+// ESP32-S3：PDM RX 僅支援 I2S0；喇叭 (ESP32-audioI2S) 須用 I2S1，見 audio_player.cpp
+#define I2S_MIC_PORT       I2S_NUM_0
 #define I2S_MIC_BCK_PIN    -1
 #define I2S_MIC_WS_PIN     42
 #define I2S_MIC_DATA_PIN   41
 
 namespace MicUpload {
 
+  static bool micDriverOk = false;
   static bool recording = false;
   static unsigned long recordStartTime = 0;
   static uint8_t* pcmBuffer = nullptr;
@@ -84,9 +86,11 @@ namespace MicUpload {
     }
     if (i2s_set_pin(I2S_MIC_PORT, &pin_config) != ESP_OK) {
       Serial.println("[MIC] I2S pin failed");
+      i2s_driver_uninstall(I2S_MIC_PORT);
       return;
     }
     i2s_zero_dma_buffer(I2S_MIC_PORT);
+    micDriverOk = true;
     Serial.println("[MIC] Ready");
   }
 
@@ -108,7 +112,7 @@ namespace MicUpload {
   }
 
   void startRecording() {
-    if (!UdpDiscovery::hasServer() || recording) return;
+    if (!micDriverOk || !UdpDiscovery::hasServer() || recording) return;
 
     const size_t pcmSize = (size_t)MIC_SAMPLE_RATE * MIC_RECORD_SEC * 2;
     pcmBuffer = (uint8_t*)heap_caps_malloc(pcmSize, MALLOC_CAP_SPIRAM);
@@ -124,7 +128,7 @@ namespace MicUpload {
   }
 
   void tick() {
-    if (!recording || !pcmBuffer) return;
+    if (!micDriverOk || !recording || !pcmBuffer) return;
 
     const size_t pcmSize = (size_t)MIC_SAMPLE_RATE * MIC_RECORD_SEC * 2;
     size_t readBytes = 0;
