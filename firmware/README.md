@@ -33,14 +33,14 @@
 | XIAO 絲印 | 晶片 GPIO | 本專案用途 |
 |-----------|-----------|------------|
 | D0 | 1 | I2S 資料 → MAX98357A DIN `I2S_DOUT_PIN` |
-| D1 | 2 | 電源鍵 `BTN_POWER_PIN` |
-| D2 | 3 | 切換鍵 `BTN_MODE_PIN` |
+| D1 | 2 | I2S BCLK `I2S_BCLK_PIN` |
+| D2 | 3 | I2S LRC/WS `I2S_LRC_PIN` |
 | D4 / SDA | 5 | IMU SDA `IMU_SDA_PIN` |
 | D5 / SCL | 6 | IMU SCL `IMU_SCL_PIN` |
+| D8 | 7 | 電源鍵 `BTN_POWER_PIN` |
+| D9 | 8 | 切換鍵 `BTN_MODE_PIN` |
 | D6 / TX | 43 | GPS：ESP UART TX → 模組 RX `GPS_TX_PIN` |
 | D7 / RX | 44 | GPS：ESP UART RX ← 模組 TX `GPS_RX_PIN` |
-| （未列於 D0–D12 主表） | 36 | I2S BCLK `I2S_BCLK_PIN`（請對 Sense 全腳位圖焊接） |
-| （未列於 D0–D12 主表） | 34 | I2S LRC/WS `I2S_LRC_PIN`（同上） |
 | MTDO 等 / Camera SCCB | 40 / 39 | 相機 I2C SDA/SCL（OV3660，見 Wiki Camera 表） |
 | Camera DVP | 10–18, 38, 47, 48 等 | 內建鏡頭排線，見 `camera_stream.cpp` |
 | 內建 PDM 麥克風 | 41 / 42 | DATA / CLK（`mic_upload.cpp`，與表列 Digital microphone 一致） |
@@ -51,7 +51,8 @@
 
 - `IMU_I2C_ADDR = 0x68`（AD0 接 GND）
 - `IMU_STANDALONE_TEST = 0`（一般連線模式）
-- `GPIO1_TOGGLE_TEST_ENABLE = 0`（不做 GPIO1 LED 方波測試）
+- `GPIO1_TOGGLE_TEST_ENABLE = 1`（啟用 LED 方波測試）
+- `GPIO1_TOGGLE_TEST_PIN = 10`（D10，每 2 秒切換高低電位）
 - `GPS_ENABLE = 0`（GPS UART 不啟用）
 - `AUDIO_I2S_ENABLE = 0`（MAX98357A 不啟用）
 - `WIFI_MODEM_SLEEP = 0`（避免 IMU POST 因 sleep 逾時）
