@@ -7,10 +7,10 @@
 - **UDP 探索**：開機後廣播 `WHO_IS_SERVER`，取得伺服器 IP
 - **MJPEG 串流**：port 81 `/stream`，供伺服器即時擷取影像
 - **雙按鈕**：電源鍵 + 切換鍵，可切換「單一按鈕」與「持續監測」模式
-- **語音播放**：從伺服器 `GET /audio/latest` 取得 TTS 並以 MAX98357A I2S 播放
+- **語音播放**：從伺服器 `GET /audio/latest` 取得 TTS 並以 MAX98357A I2S 播放（本版預設關閉）
 - **麥克風**：PDM 錄音上傳 POST `/api/asr`（語音指令）
 - **IMU**：ICM-20948 資料定期 POST 至 `/api/imu`
-- **GPS**：NEO-M8N 經緯度定期 POST 至 `/api/gps`
+- **GPS**：NEO-M8N 經緯度定期 POST 至 `/api/gps`（本版預設關閉）
 
 ## 按鈕操作
 
@@ -46,6 +46,15 @@
 | 內建 PDM 麥克風 | 41 / 42 | DATA / CLK（`mic_upload.cpp`，與表列 Digital microphone 一致） |
 
 若你外接線與上表不同，請只改 `include/config.h`（與必要時 `camera_stream.cpp`）。
+
+### 目前韌體預設開關（對應現在腳位/接線）
+
+- `IMU_I2C_ADDR = 0x68`（AD0 接 GND）
+- `IMU_STANDALONE_TEST = 0`（一般連線模式）
+- `GPIO1_TOGGLE_TEST_ENABLE = 0`（不做 GPIO1 LED 方波測試）
+- `GPS_ENABLE = 0`（GPS UART 不啟用）
+- `AUDIO_I2S_ENABLE = 0`（MAX98357A 不啟用）
+- `WIFI_MODEM_SLEEP = 0`（避免 IMU POST 因 sleep 逾時）
 
 ## 省電
 
