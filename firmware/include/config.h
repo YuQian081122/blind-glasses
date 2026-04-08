@@ -36,22 +36,23 @@
 // NVS 尚無紀錄時的開機預設（曾用切換鍵切過則以 NVS 為準；若要強制改回持續監測可清除快閃或短按切換鍵切一次）
 #define OP_MODE_DEFAULT     OP_MODE_ALWAYS_ON
 
-// ============ 按鈕 - 電源鍵與切換鍵（Seeed XIAO ESP32-S3：D1=GPIO2、D2=GPIO3）============
-#define BTN_POWER_PIN       2    // 電源鍵 → 板載 D1（GPIO2）
-#define BTN_MODE_PIN        3    // 切換鍵 → 板載 D2（GPIO3）
+// ============ 按鈕 - 電源鍵與切換鍵（D1/D2 改供 I2S 後，按鈕改接 D8/D9）============
+#define BTN_POWER_PIN       7    // 電源鍵 → 板載 D8（GPIO7）
+#define BTN_MODE_PIN        8    // 切換鍵 → 板載 D9（GPIO8）
 #define BTN_SINGLE_PIN      BTN_POWER_PIN
 #define BTN_DEBOUNCE_MS     50
 #define BTN_POWER_HOLD_MS   5000  // 電源鍵長按 5 秒 = 開/關機；切換鍵長按 5 秒 = 語音助理
 
 // ============ I2S (MAX98357A) ============
-// GPS 使用 D6/D7（GPIO43/44）後，I2S 資料改接 D0（GPIO1）。BCLK/LRC：GPIO36、34 請對 Sense 全腳位圖。
-#define I2S_BCLK_PIN    36
-#define I2S_LRC_PIN     34
+// 依目前接線：D0/D1/D2 分別接 DIN/BCLK/LRC
 #define I2S_DOUT_PIN    1    // D0（GPIO1）→ MAX98357A DIN
+#define I2S_BCLK_PIN    2    // D1（GPIO2）→ MAX98357A BCLK
+#define I2S_LRC_PIN     3    // D2（GPIO3）→ MAX98357A LRC/WS
 
-// ============ GPIO1 LED 測試 ============
-// 1=在 loop 中每 2 秒切換 GPIO1 高低電位，方便接 LED 觀察輸出
-#define GPIO1_TOGGLE_TEST_ENABLE      0
+// ============ GPIO LED 測試 ============
+// 1=在 loop 中每 2 秒切換測試腳位高低電位，方便接 LED 觀察輸出
+#define GPIO1_TOGGLE_TEST_ENABLE      1
+#define GPIO1_TOGGLE_TEST_PIN         10   // D10 (GPIO10)
 #define GPIO1_TOGGLE_INTERVAL_MS      2000
 
 // ============ IMU (ICM-20948) ============

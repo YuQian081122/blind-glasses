@@ -66,11 +66,12 @@ void setup() {
 #if IMU_STANDALONE_TEST
   Serial.println("[IMU-TEST] IMU_STANDALONE_TEST=1, skip WiFi/Camera/GPS/Mic/Audio/UDP");
 #if GPIO1_TOGGLE_TEST_ENABLE
-  pinMode(1, OUTPUT);
-  digitalWrite(1, LOW);
+  pinMode(GPIO1_TOGGLE_TEST_PIN, OUTPUT);
+  digitalWrite(GPIO1_TOGGLE_TEST_PIN, LOW);
   gpio1LevelHigh = false;
   gpio1ToggleMs = millis();
-  Serial.printf("[GPIO1] Toggle test enabled, interval=%lu ms\n", (unsigned long)GPIO1_TOGGLE_INTERVAL_MS);
+  Serial.printf("[GPIO-TEST] pin=%d enabled, interval=%lu ms\n",
+                GPIO1_TOGGLE_TEST_PIN, (unsigned long)GPIO1_TOGGLE_INTERVAL_MS);
 #endif
   ImuStream::beginStandalone();
   return;
@@ -126,8 +127,9 @@ void loop() {
   if (now - gpio1ToggleMs >= GPIO1_TOGGLE_INTERVAL_MS) {
     gpio1ToggleMs = now;
     gpio1LevelHigh = !gpio1LevelHigh;
-    digitalWrite(1, gpio1LevelHigh ? HIGH : LOW);
-    Serial.printf("[GPIO1] level=%s\n", gpio1LevelHigh ? "HIGH" : "LOW");
+    digitalWrite(GPIO1_TOGGLE_TEST_PIN, gpio1LevelHigh ? HIGH : LOW);
+    Serial.printf("[GPIO-TEST] pin=%d level=%s\n",
+                  GPIO1_TOGGLE_TEST_PIN, gpio1LevelHigh ? "HIGH" : "LOW");
   }
 #endif
   ImuStream::tick();
