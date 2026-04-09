@@ -63,8 +63,6 @@ void setup() {
   delay(1000);
   Serial.println("\n=== AI Smart Blind Glasses ===");
 
-#if IMU_STANDALONE_TEST
-  Serial.println("[IMU-TEST] IMU_STANDALONE_TEST=1, skip WiFi/Camera/GPS/Mic/Audio/UDP");
 #if GPIO1_TOGGLE_TEST_ENABLE
   pinMode(GPIO1_TOGGLE_TEST_PIN, OUTPUT);
   digitalWrite(GPIO1_TOGGLE_TEST_PIN, LOW);
@@ -73,6 +71,9 @@ void setup() {
   Serial.printf("[GPIO-TEST] pin=%d enabled, interval=%lu ms\n",
                 GPIO1_TOGGLE_TEST_PIN, (unsigned long)GPIO1_TOGGLE_INTERVAL_MS);
 #endif
+
+#if IMU_STANDALONE_TEST
+  Serial.println("[IMU-TEST] IMU_STANDALONE_TEST=1, skip WiFi/Camera/GPS/Mic/Audio/UDP");
   ImuStream::beginStandalone();
   return;
 #endif
@@ -121,7 +122,6 @@ void setup() {
 }
 
 void loop() {
-#if IMU_STANDALONE_TEST
 #if GPIO1_TOGGLE_TEST_ENABLE
   unsigned long now = millis();
   if (now - gpio1ToggleMs >= GPIO1_TOGGLE_INTERVAL_MS) {
@@ -132,6 +132,8 @@ void loop() {
                   GPIO1_TOGGLE_TEST_PIN, gpio1LevelHigh ? "HIGH" : "LOW");
   }
 #endif
+
+#if IMU_STANDALONE_TEST
   ImuStream::tick();
   delay(5);
   return;

@@ -52,7 +52,7 @@
 - `IMU_I2C_ADDR = 0x68`（AD0 接 GND）
 - `IMU_STANDALONE_TEST = 0`（一般連線模式）
 - `GPIO1_TOGGLE_TEST_ENABLE = 1`（啟用 LED 方波測試）
-- `GPIO1_TOGGLE_TEST_PIN = 10`（D10，每 2 秒切換高低電位）
+- `GPIO1_TOGGLE_TEST_PIN = 9`（D10/GPIO9，每 2 秒切換高低電位）
 - `GPS_ENABLE = 0`（GPS UART 不啟用）
 - `AUDIO_I2S_ENABLE = 0`（MAX98357A 不啟用）
 - `WIFI_MODEM_SLEEP = 0`（避免 IMU POST 因 sleep 逾時）

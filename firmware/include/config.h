@@ -52,7 +52,7 @@
 // ============ GPIO LED 測試 ============
 // 1=在 loop 中每 2 秒切換測試腳位高低電位，方便接 LED 觀察輸出
 #define GPIO1_TOGGLE_TEST_ENABLE      1
-#define GPIO1_TOGGLE_TEST_PIN         10   // D10 (GPIO10)
+#define GPIO1_TOGGLE_TEST_PIN         9    // D10 (GPIO9)
 #define GPIO1_TOGGLE_INTERVAL_MS      2000
 
 // ============ IMU (ICM-20948) ============
