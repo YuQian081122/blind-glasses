@@ -19,6 +19,8 @@
 #include "imu_stream.h"
 #include "mic_upload.h"
 #include "gps_stream.h"
+#include "ble_quick_link.h"
+#include <Preferences.h>
 
 static unsigned long lastAudioTriggerTime = 0;
 static const unsigned long AUDIO_FETCH_DELAY_MS = 3000;
@@ -26,12 +28,20 @@ static bool singleBtnVoiceThenMonitor = false;
 static bool voicePlaybackStarted = false;
 static unsigned long gpio1ToggleMs = 0;
 static bool gpio1LevelHigh = false;
+static Preferences wifiPrefs;
 
 void setupWifi() {
+  String ssid = WIFI_SSID;
+  String pass = WIFI_PASSWORD;
+  wifiPrefs.begin("wifi_cfg", false);
+  ssid = wifiPrefs.getString("ssid", ssid);
+  pass = wifiPrefs.getString("pass", pass);
+  wifiPrefs.end();
+
   Serial.print("Connecting to WiFi ");
-  Serial.println(WIFI_SSID);
+  Serial.println(ssid);
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.begin(ssid.c_str(), pass.c_str());
 
   int retry = 0;
   while (WiFi.status() != WL_CONNECTED && retry < WIFI_MAX_RETRY) {
@@ -56,6 +66,28 @@ void setupWifi() {
     Serial.println();
     Serial.println("WiFi connect failed!");
   }
+}
+
+void applyWifiFromBle(const String& ssid, const String& pass) {
+  if (ssid.isEmpty()) {
+    Serial.println("[BLE] WiFi apply ignored: empty ssid");
+    return;
+  }
+  Serial.printf("[BLE] Applying WiFi SSID=%s\n", ssid.c_str());
+  WiFi.disconnect(true, true);
+  delay(50);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid.c_str(), pass.c_str());
+}
+
+void triggerFindAlert(unsigned long durationMs) {
+  (void)durationMs;
+  if (UdpDiscovery::hasServer()) {
+    Serial.println("[BLE] Find-me alert: play latest server audio");
+    AudioPlayer::playFromServer(UdpDiscovery::getServerIP());
+    return;
+  }
+  Serial.println("[BLE] Find-me alert requested, but server not ready");
 }
 
 void setup() {
@@ -113,6 +145,9 @@ void setup() {
   GpsStream::begin();
   esp_task_wdt_reset();
 
+  BleQuickLink::begin();
+  esp_task_wdt_reset();
+
 #if POWER_SAVE_ENABLE && WIFI_MODEM_SLEEP
   if (WiFi.status() == WL_CONNECTED) {
     WiFi.setSleep(true);
@@ -140,8 +175,19 @@ void loop() {
 #endif
 
   UdpDiscovery::tick();
+  BleQuickLink::tick();
+  BleQuickLink::setRuntimeStatus(WiFi.status() == WL_CONNECTED, WiFi.localIP());
   AudioPlayer::tick();
   MicUpload::tick();
+
+  String bleSsid;
+  String blePass;
+  if (BleQuickLink::consumeWifiApplyRequest(bleSsid, blePass)) {
+    applyWifiFromBle(bleSsid, blePass);
+  }
+  if (BleQuickLink::consumeFindMeRequest()) {
+    triggerFindAlert(10000);
+  }
   if (UdpDiscovery::hasServer()) {
     IPAddress ip = UdpDiscovery::getServerIP();
     ImuStream::setServerIP(ip);

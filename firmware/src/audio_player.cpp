@@ -1,5 +1,5 @@
 /**
- * 語音播放實作 - ESP32-audioI2S + MAX98357A
+ * 語音播放實作 - HTTP 下載 + I2S (MAX98357A)
  */
 
 #include "audio_player.h"
@@ -14,6 +14,16 @@ namespace AudioPlayer {
 #if AUDIO_I2S_ENABLE
   static Audio* audio = nullptr;
 #endif
+
+  static void buildAudioUrl(IPAddress serverIP, char* out, size_t outLen) {
+#if SERVER_HTTP_PORT == 80
+    snprintf(out, outLen, "http://%d.%d.%d.%d%s",
+             serverIP[0], serverIP[1], serverIP[2], serverIP[3], API_AUDIO_PATH);
+#else
+    snprintf(out, outLen, "http://%d.%d.%d.%d:%d%s",
+             serverIP[0], serverIP[1], serverIP[2], serverIP[3], SERVER_HTTP_PORT, API_AUDIO_PATH);
+#endif
+  }
 
   void begin() {
 #if !AUDIO_I2S_ENABLE
@@ -36,30 +46,24 @@ namespace AudioPlayer {
   }
 
   void playFromServer(IPAddress serverIP) {
-#if !AUDIO_I2S_ENABLE
-    (void)serverIP;
-#else
+#if AUDIO_I2S_ENABLE
     if (!audio) return;
-    char url[80];
-#if SERVER_HTTP_PORT == 80
-    snprintf(url, sizeof(url), "http://%d.%d.%d.%d%s",
-             serverIP[0], serverIP[1], serverIP[2], serverIP[3], API_AUDIO_PATH);
-#else
-    snprintf(url, sizeof(url), "http://%d.%d.%d.%d:%d%s",
-             serverIP[0], serverIP[1], serverIP[2], serverIP[3], SERVER_HTTP_PORT, API_AUDIO_PATH);
-#endif
-    Serial.print("[AUDIO] Playing: ");
+    char url[96];
+    buildAudioUrl(serverIP, url, sizeof(url));
+    Serial.print("[AUDIO] I2S Playing: ");
     Serial.println(url);
     audio->connecttohost(url);
+#else
+    (void)serverIP;
 #endif
   }
 
   bool isPlaying() {
-#if !AUDIO_I2S_ENABLE
-    return false;
-#else
+#if AUDIO_I2S_ENABLE
     if (!audio) return false;
     return audio->isRunning();
+#else
+    return false;
 #endif
   }
 

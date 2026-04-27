@@ -11,6 +11,16 @@
 - **麥克風**：PDM 錄音上傳 POST `/api/asr`（語音指令）
 - **IMU**：ICM-20948 資料定期 POST 至 `/api/imu`
 - **GPS**：NEO-M8N 經緯度定期 POST 至 `/api/gps`（本版預設關閉）
+- **BLE 快速連線**：手機可透過 BLE 設定 WiFi 與觸發尋找提示
+
+## 藍牙功能說明（目前版本）
+
+目前僅保留 **BLE 手機連線**，不包含藍牙耳機（A2DP/HFP）功能。  
+可用能力：
+- 透過 BLE 寫入 WiFi SSID/密碼並套用
+- 透過 BLE 觸發「找尋裝置」提示（目前會嘗試播放伺服器最新語音）
+
+音訊輸出維持既有 I2S 喇叭 + PDM 麥克風流程。
 
 ## 按鈕操作
 
@@ -56,6 +66,7 @@
 - `GPS_ENABLE = 0`（GPS UART 不啟用）
 - `AUDIO_I2S_ENABLE = 0`（MAX98357A 不啟用）
 - `WIFI_MODEM_SLEEP = 0`（避免 IMU POST 因 sleep 逾時）
+- `BLE_QUICK_LINK_ENABLE = 1`（啟用手機 BLE 快速連線）
 
 ## 省電
 

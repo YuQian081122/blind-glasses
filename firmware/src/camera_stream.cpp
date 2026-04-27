@@ -87,8 +87,8 @@ static esp_err_t streamHandler(httpd_req_t* req) {
     esp_camera_fb_return(fb);
     fb = NULL;
 
-    // 防 buffer overflow (OV3660 建議 30ms)
-    delay(30);
+    // 讓出 CPU；不再固定延遲 30ms，避免把可用幀率鎖死在 ~33fps
+    delay(1);
   }
 
   if (fb) esp_camera_fb_return(fb);
@@ -140,11 +140,14 @@ bool CameraStream::begin() {
   config.ledc_timer = LEDC_TIMER_0;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.pixel_format = PIXFORMAT_JPEG;
-  config.frame_size = FRAMESIZE_VGA;   // 640x480, 平衡品質與效能
-  config.jpeg_quality = 12;
+  // 低延遲優先：QVGA 可大幅降低單幀體積與傳輸時間，監控頁更新更順
+  config.frame_size = FRAMESIZE_QVGA;  // 320x240
+  // 數值越小畫質越好但資料更大；這裡取中間偏低延遲
+  config.jpeg_quality = 18;
   config.fb_count = 2;                 // OV3660 建議 2
   config.fb_location = CAMERA_FB_IN_PSRAM;
-  config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+  // 低延遲模式：優先抓最新幀，避免管線累積造成 1~2 秒延遲
+  config.grab_mode = CAMERA_GRAB_LATEST;
 
   esp_task_wdt_reset();
   esp_err_t err = esp_camera_init(&config);

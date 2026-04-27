@@ -100,6 +100,17 @@
 #define API_TIMEOUT_MS      15000
 #define AUDIO_POLL_INTERVAL_MS  500
 
+// ============ BLE 快速連接（S3 可用） ============
+#define BLE_QUICK_LINK_ENABLE         1
+#define BLE_DEVICE_NAME               "BlindGlasses-S3"
+#define BLE_SERVICE_UUID              "6f2f6d30-4d57-4c76-a5dd-86f4d2a06340"
+#define BLE_WIFI_SSID_UUID            "6f2f6d31-4d57-4c76-a5dd-86f4d2a06340"
+#define BLE_WIFI_PASS_UUID            "6f2f6d32-4d57-4c76-a5dd-86f4d2a06340"
+#define BLE_WIFI_APPLY_UUID           "6f2f6d33-4d57-4c76-a5dd-86f4d2a06340"
+#define BLE_FIND_ME_UUID              "6f2f6d34-4d57-4c76-a5dd-86f4d2a06340"
+#define BLE_STATUS_UUID               "6f2f6d35-4d57-4c76-a5dd-86f4d2a06340"
+#define BLE_STATUS_NOTIFY_MS          1000
+
 // ============ 相機啟動 ============
 // 1=開機且 WiFi 連上後立即啟動串流（即使省電 + 單一按鈕模式）；0=維持省電延後開相機（按鍵或切換持續監測後才開）
 #define CAMERA_START_ON_BOOT  1
