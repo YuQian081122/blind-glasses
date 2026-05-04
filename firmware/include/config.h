@@ -44,14 +44,14 @@
 #define BTN_POWER_HOLD_MS   5000  // 電源鍵長按 5 秒 = 開/關機；切換鍵長按 5 秒 = 語音助理
 
 // ============ I2S (MAX98357A) ============
-// 依目前接線：D0/D1/D2 分別接 DIN/BCLK/LRC
+// Pin-B 測試版：先不改實體接線，僅在韌體內交換 BCLK/LRC 做相容性排查
 #define I2S_DOUT_PIN    1    // D0（GPIO1）→ MAX98357A DIN
-#define I2S_BCLK_PIN    2    // D1（GPIO2）→ MAX98357A BCLK
-#define I2S_LRC_PIN     3    // D2（GPIO3）→ MAX98357A LRC/WS
+#define I2S_BCLK_PIN    3    // D2（GPIO3）→ MAX98357A BCLK (test-B swap)
+#define I2S_LRC_PIN     2    // D1（GPIO2）→ MAX98357A LRC/WS (test-B swap)
 
 // ============ GPIO LED 測試 ============
 // 1=在 loop 中每 2 秒切換測試腳位高低電位，方便接 LED 觀察輸出
-#define GPIO1_TOGGLE_TEST_ENABLE      1
+#define GPIO1_TOGGLE_TEST_ENABLE      0
 #define GPIO1_TOGGLE_TEST_PIN         9    // D10 (GPIO9)
 #define GPIO1_TOGGLE_INTERVAL_MS      2000
 
@@ -92,9 +92,14 @@
 #define GPS_SEND_INTERVAL_MS    5000   // 一般 5 秒
 #define GPS_SEND_INTERVAL_PS_MS 15000  // 省電時 15 秒上傳一次
 
-// 僅使用相機+陀螺儀時：關閉 GPS UART 與 I2S 喇叭（未接天線／喇叭屬正常）
+// 僅使用相機+陀螺儀時：可關閉 GPS UART；音訊測試時請開啟 I2S 喇叭
 #define GPS_ENABLE          0   // 1=啟用 NEO-M8N 串流；0=不初始化 GPS UART
-#define AUDIO_I2S_ENABLE    0   // 1=MAX98357A 播放；0=不佔用 I2S1（PDM 麥克風仍為 I2S0）
+#define AUDIO_I2S_ENABLE    1   // 1=MAX98357A 播放；0=不佔用 I2S1（PDM 麥克風仍為 I2S0）
+
+// ============ 音訊自動測試（不需按鈕） ============
+// 1=每隔固定秒數自動抓一次 /audio/latest 測 MAX98357 播放鏈路
+#define AUDIO_AUTO_TEST_ENABLE       1
+#define AUDIO_AUTO_TEST_INTERVAL_MS  10000
 
 #define API_AUDIO_PATH      "/audio/latest"
 #define API_TIMEOUT_MS      15000
@@ -109,6 +114,7 @@
 #define BLE_WIFI_APPLY_UUID           "6f2f6d33-4d57-4c76-a5dd-86f4d2a06340"
 #define BLE_FIND_ME_UUID              "6f2f6d34-4d57-4c76-a5dd-86f4d2a06340"
 #define BLE_STATUS_UUID               "6f2f6d35-4d57-4c76-a5dd-86f4d2a06340"
+#define BLE_MODE_UUID                 "6f2f6d36-4d57-4c76-a5dd-86f4d2a06340"
 #define BLE_STATUS_NOTIFY_MS          1000
 
 // ============ 相機啟動 ============

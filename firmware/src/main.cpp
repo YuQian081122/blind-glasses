@@ -24,6 +24,7 @@
 
 static unsigned long lastAudioTriggerTime = 0;
 static const unsigned long AUDIO_FETCH_DELAY_MS = 3000;
+static unsigned long lastAutoAudioTestTime = 0;
 static bool singleBtnVoiceThenMonitor = false;
 static bool voicePlaybackStarted = false;
 static unsigned long gpio1ToggleMs = 0;
@@ -148,6 +149,12 @@ void setup() {
   BleQuickLink::begin();
   esp_task_wdt_reset();
 
+#if AUDIO_AUTO_TEST_ENABLE
+  lastAutoAudioTestTime = millis();
+  Serial.printf("[AUDIO-TEST] enabled, interval=%lu ms\n",
+                (unsigned long)AUDIO_AUTO_TEST_INTERVAL_MS);
+#endif
+
 #if POWER_SAVE_ENABLE && WIFI_MODEM_SLEEP
   if (WiFi.status() == WL_CONNECTED) {
     WiFi.setSleep(true);
@@ -187,6 +194,27 @@ void loop() {
   }
   if (BleQuickLink::consumeFindMeRequest()) {
     triggerFindAlert(10000);
+  }
+  uint8_t bleOpMode = OP_MODE_DEFAULT;
+  String bleTaskMode;
+  bool hasBleTaskMode = false;
+  if (BleQuickLink::consumeModeRequest(bleOpMode, bleTaskMode, hasBleTaskMode)) {
+    OpMode::set(bleOpMode);
+    Serial.printf("[BLE] Apply op_mode: %s\n", OpMode::isSingleButton() ? "SINGLE_BTN" : "ALWAYS_ON");
+#if POWER_SAVE_ENABLE
+    if (OpMode::isAlwaysOn() && !CameraStream::isReady() && WiFi.status() == WL_CONNECTED) {
+      if (CameraStream::begin()) Serial.println("[CAM] Ready (ble mode)");
+    }
+#endif
+    if (hasBleTaskMode) {
+      if (UdpDiscovery::hasServer()) {
+        ServerAPI::requestGemini(UdpDiscovery::getServerIP(), bleTaskMode.c_str());
+        lastAudioTriggerTime = millis();
+        Serial.printf("[BLE] Trigger task_mode: %s\n", bleTaskMode.c_str());
+      } else {
+        Serial.printf("[BLE] task_mode=%s ignored: server not ready\n", bleTaskMode.c_str());
+      }
+    }
   }
   if (UdpDiscovery::hasServer()) {
     IPAddress ip = UdpDiscovery::getServerIP();
@@ -230,10 +258,24 @@ void loop() {
 
   bool fromButton = lastAudioTriggerTime > 0 && (millis() - lastAudioTriggerTime >= AUDIO_FETCH_DELAY_MS);
   bool fromAsr = MicUpload::hasPendingAudioFetch() && MicUpload::shouldFetchAudio();
-  if ((fromButton || fromAsr) && !AudioPlayer::isPlaying() && UdpDiscovery::hasServer()) {
+  bool fromAutoTest = false;
+#if AUDIO_AUTO_TEST_ENABLE
+  if (UdpDiscovery::hasServer() &&
+      (millis() - lastAutoAudioTestTime >= AUDIO_AUTO_TEST_INTERVAL_MS)) {
+    fromAutoTest = true;
+    lastAutoAudioTestTime = millis();
+    Serial.println("[AUDIO-TEST] trigger playFromServer");
+  }
+#endif
+  bool canPlayNormal = (fromButton || fromAsr) && !AudioPlayer::isPlaying() && UdpDiscovery::hasServer();
+  bool canPlayAutoTest = fromAutoTest && UdpDiscovery::hasServer();
+  if (canPlayNormal || canPlayAutoTest) {
     if (singleBtnVoiceThenMonitor) voicePlaybackStarted = true;
     lastAudioTriggerTime = 0;
     MicUpload::clearPendingAudioFetch();
+    if (canPlayAutoTest) {
+      Serial.printf("[AUDIO-TEST] forcing playback (isPlaying=%d)\n", AudioPlayer::isPlaying() ? 1 : 0);
+    }
     AudioPlayer::playFromServer(UdpDiscovery::getServerIP());
   }
 
