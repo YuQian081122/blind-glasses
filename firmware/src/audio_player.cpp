@@ -58,6 +58,17 @@ namespace AudioPlayer {
 #endif
   }
 
+  void setVolume(uint8_t vol) {
+#if AUDIO_I2S_ENABLE
+    if (audio && vol <= 21) {
+      audio->setVolume((int)vol);
+      Serial.printf("[AUDIO] Volume changed to %d\n", (int)vol);
+    }
+#else
+    (void)vol;
+#endif
+  }
+
   bool isPlaying() {
 #if AUDIO_I2S_ENABLE
     if (!audio) return false;

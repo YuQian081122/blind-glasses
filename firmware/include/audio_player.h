@@ -15,6 +15,7 @@ namespace AudioPlayer {
 
   // 從 serverIP 取得 /audio/latest 並播放
   void playFromServer(IPAddress serverIP);
+  void setVolume(uint8_t vol);
 
   // 是否正在播放
   bool isPlaying();

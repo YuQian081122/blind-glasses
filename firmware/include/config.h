@@ -115,6 +115,7 @@
 #define BLE_FIND_ME_UUID              "6f2f6d34-4d57-4c76-a5dd-86f4d2a06340"
 #define BLE_STATUS_UUID               "6f2f6d35-4d57-4c76-a5dd-86f4d2a06340"
 #define BLE_MODE_UUID                 "6f2f6d36-4d57-4c76-a5dd-86f4d2a06340"
+#define BLE_VOLUME_UUID               "6f2f6d37-4d57-4c76-a5dd-86f4d2a06340"
 #define BLE_STATUS_NOTIFY_MS          1000
 
 // ============ 相機啟動 ============

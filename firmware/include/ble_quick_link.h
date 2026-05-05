@@ -13,6 +13,7 @@ namespace BleQuickLink {
   bool consumeWifiApplyRequest(String& ssid, String& password);
   bool consumeFindMeRequest();
   bool consumeModeRequest(uint8_t& opMode, String& taskMode, bool& hasTaskMode);
+  bool consumeVolumeRequest(uint8_t& outVolume);
 
   void setRuntimeStatus(bool wifiConnected, const IPAddress& ip);
 

@@ -18,6 +18,7 @@ namespace BleQuickLink {
   static BLECharacteristic* cWifiApply = nullptr;
   static BLECharacteristic* cFindMe = nullptr;
   static BLECharacteristic* cMode = nullptr;
+  static BLECharacteristic* cVolume = nullptr;
   static BLECharacteristic* cStatus = nullptr;
   static Preferences prefs;
 
@@ -26,9 +27,11 @@ namespace BleQuickLink {
   static volatile bool requestWifiApply = false;
   static volatile bool requestFindMe = false;
   static volatile bool requestModeApply = false;
+  static volatile bool requestVolumeApply = false;
   static uint8_t pendingOpMode = OP_MODE_DEFAULT;
   static String pendingTaskMode = "";
   static bool pendingHasTaskMode = false;
+  static uint8_t pendingVolume = 21;
   static bool wifiConnected = false;
   static IPAddress wifiIp(0, 0, 0, 0);
   static unsigned long lastNotifyMs = 0;
@@ -173,6 +176,12 @@ namespace BleQuickLink {
         requestFindMe = true;
       } else if (c == cMode && parseModePayload(value)) {
         requestModeApply = true;
+      } else if (c == cVolume) {
+        int vol = value.toInt();
+        if (vol >= 0 && vol <= 21) {
+          pendingVolume = (uint8_t)vol;
+          requestVolumeApply = true;
+        }
       }
     }
   };
@@ -207,6 +216,7 @@ namespace BleQuickLink {
     cWifiApply = service->createCharacteristic(BLE_WIFI_APPLY_UUID, BLECharacteristic::PROPERTY_WRITE);
     cFindMe = service->createCharacteristic(BLE_FIND_ME_UUID, BLECharacteristic::PROPERTY_WRITE);
     cMode = service->createCharacteristic(BLE_MODE_UUID, BLECharacteristic::PROPERTY_WRITE);
+    cVolume = service->createCharacteristic(BLE_VOLUME_UUID, BLECharacteristic::PROPERTY_WRITE);
     cStatus = service->createCharacteristic(BLE_STATUS_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
 
     cWifiSsid->setCallbacks(&callbacks);
@@ -214,6 +224,7 @@ namespace BleQuickLink {
     cWifiApply->setCallbacks(&callbacks);
     cFindMe->setCallbacks(&callbacks);
     cMode->setCallbacks(&callbacks);
+    cVolume->setCallbacks(&callbacks);
 
     cWifiSsid->setValue(pendingSsid.c_str());
     cStatus->setValue("{\"wifi\":false}");
@@ -286,6 +297,18 @@ namespace BleQuickLink {
     (void)opMode;
     (void)taskMode;
     (void)hasTaskMode;
+    return false;
+#endif
+  }
+
+  bool consumeVolumeRequest(uint8_t& outVolume) {
+#if BLE_QUICK_LINK_ENABLE
+    if (!requestVolumeApply) return false;
+    requestVolumeApply = false;
+    outVolume = pendingVolume;
+    return true;
+#else
+    (void)outVolume;
     return false;
 #endif
   }

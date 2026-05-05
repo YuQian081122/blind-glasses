@@ -216,6 +216,10 @@ void loop() {
       }
     }
   }
+  uint8_t newVolume = 0;
+  if (BleQuickLink::consumeVolumeRequest(newVolume)) {
+    AudioPlayer::setVolume(newVolume);
+  }
   if (UdpDiscovery::hasServer()) {
     IPAddress ip = UdpDiscovery::getServerIP();
     ImuStream::setServerIP(ip);
