@@ -1,30 +1,49 @@
 # AI 智慧導盲眼鏡 - ESP32 韌體
 
-適用開發板：Seeed XIAO ESP32-S3 Sense (OV3660)
+適用開發板：Seeed XIAO ESP32-S3 Sense (OV3660)  
+目前 GitHub 倉庫（firmware-only）：<https://github.com/YuQian081122/blind-glasses-firmware>
+
+## 專案範圍（2026 更新）
+
+- 本倉庫目前以 **韌體** 為主（`firmware/`）
+- 伺服器（FastAPI）不保證與本倉庫同步發佈
+- 建議將韌體編譯、燒錄、診斷流程都以 `firmware/` 目錄為準
+
+## 快速開始（Windows）
+
+```powershell
+cd firmware
+pio run -e seeed_xiao_esp32s3
+```
+
+如果 `pio` 指令不可用，改用：
+
+```powershell
+cd firmware
+python -m platformio run --environment seeed_xiao_esp32s3
+```
+
+燒錄與監看：
+
+```powershell
+python -m platformio run --target upload --environment seeed_xiao_esp32s3
+python -m platformio device monitor -b 115200
+```
 
 ## 功能
 
 - **UDP 探索**：開機後廣播 `WHO_IS_SERVER`，取得伺服器 IP
 - **MJPEG 串流**：port 81 `/stream`，供伺服器即時擷取影像
-- **雙按鈕**：電源鍵 + 切換鍵，可切換「單一按鈕」與「持續監測」模式
+- **按鈕控制**：開發中（文件暫不提供按鈕操作對照）
 - **語音播放**：從伺服器 `GET /audio/latest` 取得 TTS 並以 MAX98357A I2S 播放（本版預設關閉）
 - **麥克風**：PDM 錄音上傳 POST `/api/asr`（語音指令）
 - **IMU**：ICM-20948 資料定期 POST 至 `/api/imu`
 - **GPS**：NEO-M8N 經緯度定期 POST 至 `/api/gps`（本版預設關閉）
 
-## 按鈕操作
+## 按鈕狀態
 
-| 按鈕 | 動作 | 功能 |
-|------|------|------|
-| 電源鍵 | 短按 | 風景（general） |
-| 電源鍵 | 雙擊 | 物品查找（item_search） |
-| 電源鍵 | 三擊 | 紅綠燈（light） |
-| 電源鍵 | 長按 5 秒 | 開/關機（進入深眠，再按喚醒） |
-| 切換鍵 | 短按 | 切換 單一按鈕 ↔ 持續監測 模式 |
-| 切換鍵 | 長按 5 秒 | 呼叫 AI 語音助理 |
-
-**單一按鈕模式**：切換鍵長按 5 秒呼叫語音助理，TTS 播完後會自動切換為持續監測。  
-**持續模式**：電源鍵不觸發語音，僅切換鍵長按 5 秒觸發語音助理。
+目前按鈕流程仍在開發與驗證中，暫不提供按鈕行為對照表。  
+建議先以 API 與序列監看驗證整體流程（WiFi、UDP、IMU、ASR、TTS）。
 
 ## 硬體接線
 
@@ -70,7 +89,7 @@
 | `IMU_SEND_INTERVAL_PS_MS` | 省電時 IMU 上傳間隔（預設 200ms） |
 | `GPS_SEND_INTERVAL_PS_MS` | 省電時 GPS 上傳間隔（預設 15 秒） |
 
-**行為**：單一按鈕開機不啟動相機；第一次按風景／物品／紅綠燈或切換到持續監測時才啟動。關機為深眠（電源鍵長按 5 秒），再按電源鍵喚醒。
+**行為**：省電模式下會降低背景輪詢與上傳頻率。按鈕相關邏輯尚在開發中，請以目前 `config.h` 與 `main.cpp` 實作為準。
 
 ## 材料清單與省電建議
 
