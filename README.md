@@ -5,21 +5,19 @@
 
 ## 專案範圍（2026 更新）
 
-- 本倉庫目前以 **韌體** 為主（`firmware/`）
+- 本倉庫目前以 **韌體** 為主（程式已位於 repo 根目錄）
 - 伺服器（FastAPI）不保證與本倉庫同步發佈
-- 建議將韌體編譯、燒錄、診斷流程都以 `firmware/` 目錄為準
+- 建議以本 README 與 `include/`、`src/`、`platformio.ini` 為主要維護基準
 
 ## 快速開始（Windows）
 
 ```powershell
-cd firmware
 pio run -e seeed_xiao_esp32s3
 ```
 
 如果 `pio` 指令不可用，改用：
 
 ```powershell
-cd firmware
 python -m platformio run --environment seeed_xiao_esp32s3
 ```
 
