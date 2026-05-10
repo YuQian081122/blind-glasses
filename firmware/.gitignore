@@ -1,7 +1,0 @@
-.pio/
-.vscode/
-sdkconfig
-sdkconfig.old
-sdkconfig.defaults
-.firecrawl/
-tools/
