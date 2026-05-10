@@ -11,8 +11,9 @@
 #include <ArduinoJson.h>
 #include <stdarg.h>
 #include <math.h>
-#include <math.h>
-#include <math.h>
+#if SERVER_USE_HTTPS
+#include <WiFiClientSecure.h>
+#endif
 
 #include "ICM_20948.h"
 
@@ -144,14 +145,22 @@ namespace ImuStream {
         lastI2CScanMs = now;
         scanI2CAndPrint();
       }
-      if (!standaloneMode && serverIP != IPAddress(0, 0, 0, 0))
+      if (!standaloneMode) {
+#if CLOUD_MODE
         throttledWarn("[IMU] Not sending: sensor init failed (see boot log [IMU] Init failed)");
+#else
+        if (serverIP != IPAddress(0, 0, 0, 0))
+          throttledWarn("[IMU] Not sending: sensor init failed (see boot log [IMU] Init failed)");
+#endif
+      }
       return;
     }
+#if !CLOUD_MODE
     if (!standaloneMode && serverIP == IPAddress(0, 0, 0, 0)) {
       throttledWarn("[IMU] Not sending: no server IP yet (wait for UDP)");
       return;
     }
+#endif
 
     unsigned long now = millis();
     unsigned long interval = IMU_SEND_INTERVAL_MS;
@@ -195,8 +204,10 @@ namespace ImuStream {
       return;
     }
 
-    char url[80];
-#if SERVER_HTTP_PORT == 80
+    char url[128];
+#if CLOUD_MODE
+    snprintf(url, sizeof(url), "https://%s%s", SERVER_HOST, API_IMU_PATH);
+#elif SERVER_HTTP_PORT == 80
     snprintf(url, sizeof(url), "http://%d.%d.%d.%d%s",
              serverIP[0], serverIP[1], serverIP[2], serverIP[3], API_IMU_PATH);
 #else
@@ -216,8 +227,18 @@ namespace ImuStream {
     serializeJson(doc, body);
 
     HTTPClient http;
+#if SERVER_USE_HTTPS
+    WiFiClientSecure client;
+    client.setInsecure();
+    http.begin(client, url);
+#else
     http.begin(url);
+#endif
     http.addHeader("Content-Type", "application/json");
+#if CLOUD_MODE
+    const char* devToken = DEVICE_API_TOKEN;
+    if (devToken && devToken[0]) http.addHeader("X-Device-Token", devToken);
+#endif
     http.setTimeout(2000);
 #if POWER_SAVE_ENABLE && WIFI_MODEM_SLEEP
     WiFi.setSleep(false);
@@ -233,8 +254,12 @@ namespace ImuStream {
         Serial.println("[IMU] Server receiving IMU (gyro/accel) data");
       }
     } else {
+#if CLOUD_MODE
+      Serial.printf("[IMU] POST failed: %d (server %s)\n", code, SERVER_HOST);
+#else
       Serial.printf("[IMU] POST failed: %d (server %d.%d.%d.%d)\n", code,
                     serverIP[0], serverIP[1], serverIP[2], serverIP[3]);
+#endif
     }
   }
 

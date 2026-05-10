@@ -5,27 +5,30 @@
 
 ## 專案範圍（2026 更新）
 
-- 本倉庫目前以 **韌體** 為主（程式已位於 repo 根目錄）
+- 本倉庫目前以 **韌體** 為主，PlatformIO 專案集中在 **`firmware/`**（`include/`、`src/`、`platformio.ini`）
 - 伺服器（FastAPI）不保證與本倉庫同步發佈
-- 建議以本 README 與 `include/`、`src/`、`platformio.ini` 為主要維護基準
+- 建議以本 README 與 `firmware/include/`、`firmware/src/`、`firmware/platformio.ini` 為主要維護基準
 
 ## 快速開始（Windows）
 
 ```powershell
-pio run -e seeed_xiao_esp32s3
+cd firmware
+pio run
 ```
 
 如果 `pio` 指令不可用，改用：
 
 ```powershell
-python -m platformio run --environment seeed_xiao_esp32s3
+cd firmware
+python -m platformio run
 ```
 
 燒錄與監看：
 
 ```powershell
-python -m platformio run --target upload --environment seeed_xiao_esp32s3
-python -m platformio device monitor -b 115200
+cd firmware
+pio run -t upload
+pio device monitor -b 115200
 ```
 
 ## 功能
@@ -62,7 +65,7 @@ python -m platformio device monitor -b 115200
 | Camera DVP | 10–18, 38, 47, 48 等 | 內建鏡頭排線，見 `camera_stream.cpp` |
 | 內建 PDM 麥克風 | 41 / 42 | DATA / CLK（`mic_upload.cpp`，與表列 Digital microphone 一致） |
 
-若你外接線與上表不同，請只改 `include/config.h`（與必要時 `camera_stream.cpp`）。
+若你外接線與上表不同，請只改 `firmware/include/config.h`（與必要時 `firmware/src/camera_stream.cpp`）。
 
 ### 目前韌體預設開關（對應現在腳位/接線）
 
@@ -87,7 +90,7 @@ python -m platformio device monitor -b 115200
 | `IMU_SEND_INTERVAL_PS_MS` | 省電時 IMU 上傳間隔（預設 200ms） |
 | `GPS_SEND_INTERVAL_PS_MS` | 省電時 GPS 上傳間隔（預設 15 秒） |
 
-**行為**：省電模式下會降低背景輪詢與上傳頻率。按鈕相關邏輯尚在開發中，請以目前 `config.h` 與 `main.cpp` 實作為準。
+**行為**：省電模式下會降低背景輪詢與上傳頻率。按鈕相關邏輯尚在開發中，請以目前 `firmware/include/config.h` 與 `firmware/src/main.cpp` 實作為準。
 
 ## 材料清單與省電建議
 
@@ -99,7 +102,7 @@ python -m platformio device monitor -b 115200
 | NEO-M8N (GPS) | 省電時 15 秒上傳一次；有源陶瓷天線接天線腳可改善收訊 |
 | ESP32-S3 Sense 開發板 | 相機／WiFi 為主要耗電；單一按鈕不預開相機、WiFi modem sleep |
 | MAX98357 I2S | 僅播放時耗電；無硬體 shutdown 時不送訊號即省電 |
-| ICM-20948（陀螺儀） | 韌體已支援；I2C 位址 0x68（AD0 接 GND）或 0x69（AD0 接 VCC） |
+| ICM-20948（九軸 IMU；韌體目前僅上傳加速度+陀螺儀共 6 量） | 韌體已支援；I2C 位址 0x68（AD0 接 GND）或 0x69（AD0 接 VCC） |
 | 2.4G 天線、有源陶瓷天線 | 天線收訊好可減少重試，間接省電 |
 
 ## IMU 單獨測試（連接診斷）
@@ -108,7 +111,7 @@ python -m platformio device monitor -b 115200
 
 ### 啟用方式
 
-1. 編輯 `include/config.h`
+1. 編輯 `firmware/include/config.h`
 2. 設定：
    - `IMU_STANDALONE_TEST = 1`
    - （可選）`IMU_TEST_OUTPUT_INTERVAL_MS` 調整輸出頻率
@@ -135,10 +138,13 @@ python -m platformio device monitor -b 115200
 
 ## 建置
 
-1. 複製 `sdkconfig.defaults.template` 為 `sdkconfig.defaults`
-2. 修改 `include/config.h` 中的 `WIFI_SSID`、`WIFI_PASSWORD`
-3. 在 VS Code 開啟專案，使用 PlatformIO 編譯並燒錄
-4. 或命令列：`pio run`、`pio run -t upload`
+1. 進入 `firmware` 目錄
+2. 複製 `sdkconfig.defaults.template` 為 `sdkconfig.defaults`（與 `platformio.ini` 同層）
+3. 修改 `include/config.h` 中的 `WIFI_SSID`、`WIFI_PASSWORD`
+4. 在 VS Code 開啟專案，使用 PlatformIO 以 **`firmware` 為專案根目錄** 編譯並燒錄
+5. 或命令列（在 `firmware` 內）：`pio run`、`pio run -t upload`
+
+若你先前在 repo 根目錄建置過，根目錄可能留有舊的 `.pio`；可刪除以釋出空間，目前建置產物會在 `firmware/.pio`。
 
 ## 與伺服器 API
 

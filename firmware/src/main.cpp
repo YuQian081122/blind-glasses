@@ -16,15 +16,31 @@
 #include "button_handler.h"
 #include "audio_player.h"
 #include "server_api.h"
+#include "http_task_queue.h"
 #include "imu_stream.h"
 #include "mic_upload.h"
 #include "gps_stream.h"
 #include "ble_quick_link.h"
 #include <Preferences.h>
 
+// 雲端模式下不需要 UDP 探索，伺服器視為永遠可用
+#if CLOUD_MODE
+  static inline bool serverReady() { return WiFi.status() == WL_CONNECTED; }
+  static inline IPAddress serverAddr() { return IPAddress(1, 1, 1, 1); } // 佔位，CLOUD_MODE 實際用 hostname
+#else
+  static inline bool serverReady() { return UdpDiscovery::hasServer(); }
+  static inline IPAddress serverAddr() { return UdpDiscovery::getServerIP(); }
+#endif
+
 static unsigned long lastAudioTriggerTime = 0;
-static const unsigned long AUDIO_FETCH_DELAY_MS = 3000;
+static const unsigned long AUDIO_FETCH_DELAY_MS = 500;
+static const unsigned long TTS_GRACE_MS = 300;  // TTS 生成的額外等待
+static unsigned long taskCompletedTime = 0;
+static bool waitingForTaskCompletion = false;
 static unsigned long lastAutoAudioTestTime = 0;
+#if MIC_AUTO_TEST_ENABLE
+static unsigned long lastMicAutoTestTime = 0;
+#endif
 static bool singleBtnVoiceThenMonitor = false;
 static bool voicePlaybackStarted = false;
 static unsigned long gpio1ToggleMs = 0;
@@ -83,9 +99,9 @@ void applyWifiFromBle(const String& ssid, const String& pass) {
 
 void triggerFindAlert(unsigned long durationMs) {
   (void)durationMs;
-  if (UdpDiscovery::hasServer()) {
+  if (serverReady()) {
     Serial.println("[BLE] Find-me alert: play latest server audio");
-    AudioPlayer::playFromServer(UdpDiscovery::getServerIP());
+    AudioPlayer::playFromServer(serverAddr());
     return;
   }
   Serial.println("[BLE] Find-me alert requested, but server not ready");
@@ -116,13 +132,17 @@ void setup() {
 
   setupWifi();
   esp_task_wdt_reset();
+#if !CLOUD_MODE
   UdpDiscovery::begin();
   esp_task_wdt_reset();
+#endif
   ButtonHandler::begin();
   esp_task_wdt_reset();
   AudioPlayer::begin();
   esp_task_wdt_reset();
   MicUpload::begin();
+  esp_task_wdt_reset();
+  HttpTaskQueue::begin();
   esp_task_wdt_reset();
 
   if (WiFi.status() == WL_CONNECTED) {
@@ -155,6 +175,12 @@ void setup() {
                 (unsigned long)AUDIO_AUTO_TEST_INTERVAL_MS);
 #endif
 
+#if MIC_AUTO_TEST_ENABLE
+  lastMicAutoTestTime = millis();
+  Serial.printf("[MIC-AUTO-TEST] enabled, interval=%lu ms (no button)\n",
+                (unsigned long)MIC_AUTO_TEST_INTERVAL_MS);
+#endif
+
 #if POWER_SAVE_ENABLE && WIFI_MODEM_SLEEP
   if (WiFi.status() == WL_CONNECTED) {
     WiFi.setSleep(true);
@@ -181,11 +207,25 @@ void loop() {
   return;
 #endif
 
+#if !CLOUD_MODE
   UdpDiscovery::tick();
+#endif
   BleQuickLink::tick();
   BleQuickLink::setRuntimeStatus(WiFi.status() == WL_CONNECTED, WiFi.localIP());
+  HttpTaskQueue::tick();
   AudioPlayer::tick();
   MicUpload::tick();
+
+#if MIC_AUTO_TEST_ENABLE
+  if (serverReady() && WiFi.status() == WL_CONNECTED && !MicUpload::isRecording() &&
+      !MicUpload::hasPendingAudioFetch() && !AudioPlayer::isPlaying() &&
+      !HttpTaskQueue::isBusy() &&
+      (millis() - lastMicAutoTestTime >= MIC_AUTO_TEST_INTERVAL_MS)) {
+    lastMicAutoTestTime = millis();
+    Serial.println("[MIC-AUTO-TEST] trigger startRecording");
+    MicUpload::startRecording();
+  }
+#endif
 
   String bleSsid;
   String blePass;
@@ -207,8 +247,8 @@ void loop() {
     }
 #endif
     if (hasBleTaskMode) {
-      if (UdpDiscovery::hasServer()) {
-        ServerAPI::requestGemini(UdpDiscovery::getServerIP(), bleTaskMode.c_str());
+      if (serverReady()) {
+        HttpTaskQueue::enqueueGemini(serverAddr(), bleTaskMode.c_str());
         lastAudioTriggerTime = millis();
         Serial.printf("[BLE] Trigger task_mode: %s\n", bleTaskMode.c_str());
       } else {
@@ -220,8 +260,8 @@ void loop() {
   if (BleQuickLink::consumeVolumeRequest(newVolume)) {
     AudioPlayer::setVolume(newVolume);
   }
-  if (UdpDiscovery::hasServer()) {
-    IPAddress ip = UdpDiscovery::getServerIP();
+  if (serverReady()) {
+    IPAddress ip = serverAddr();
     ImuStream::setServerIP(ip);
     GpsStream::setServerIP(ip);
     ImuStream::tick();
@@ -242,8 +282,8 @@ void loop() {
       if (CameraStream::begin()) Serial.println("[CAM] Ready (mode switch)");
     }
 #endif
-  } else if (evt != ButtonEvent::None && UdpDiscovery::hasServer()) {
-    IPAddress ip = UdpDiscovery::getServerIP();
+  } else if (evt != ButtonEvent::None && serverReady()) {
+    IPAddress ip = serverAddr();
 #if POWER_SAVE_ENABLE
     if (OpMode::isSingleButton() && !CameraStream::isReady() && WiFi.status() == WL_CONNECTED) {
       if (evt == ButtonEvent::TrafficShort || evt == ButtonEvent::SceneryLong) {
@@ -252,7 +292,10 @@ void loop() {
     }
 #endif
     if (evt == ButtonEvent::TrafficShort) {
-      ServerAPI::requestGemini(ip, "light");
+      HttpTaskQueue::clearCompleted();
+      HttpTaskQueue::enqueueGemini(ip, "light");
+      waitingForTaskCompletion = true;
+      taskCompletedTime = 0;
       lastAudioTriggerTime = millis();
     } else if (evt == ButtonEvent::SceneryLong) {
       if (OpMode::isSingleButton()) singleBtnVoiceThenMonitor = true;
@@ -260,19 +303,34 @@ void loop() {
     }
   }
 
-  bool fromButton = lastAudioTriggerTime > 0 && (millis() - lastAudioTriggerTime >= AUDIO_FETCH_DELAY_MS);
+  // 偵測背景 HTTP 任務完成
+  if (waitingForTaskCompletion && HttpTaskQueue::hasCompletedSinceEnqueue()) {
+    taskCompletedTime = millis();
+    waitingForTaskCompletion = false;
+    Serial.printf("[LAT] Task completed, wait %dms for TTS\n", (int)TTS_GRACE_MS);
+  }
+
+  // 智慧等待：任務完成 + TTS 生成時間後才 fetch
+  bool fromButton = false;
+  if (lastAudioTriggerTime > 0 && !waitingForTaskCompletion) {
+    if (taskCompletedTime > 0) {
+      fromButton = (millis() - taskCompletedTime >= TTS_GRACE_MS);
+    } else {
+      fromButton = (millis() - lastAudioTriggerTime >= AUDIO_FETCH_DELAY_MS);
+    }
+  }
   bool fromAsr = MicUpload::hasPendingAudioFetch() && MicUpload::shouldFetchAudio();
   bool fromAutoTest = false;
 #if AUDIO_AUTO_TEST_ENABLE
-  if (UdpDiscovery::hasServer() &&
+  if (serverReady() &&
       (millis() - lastAutoAudioTestTime >= AUDIO_AUTO_TEST_INTERVAL_MS)) {
     fromAutoTest = true;
     lastAutoAudioTestTime = millis();
     Serial.println("[AUDIO-TEST] trigger playFromServer");
   }
 #endif
-  bool canPlayNormal = (fromButton || fromAsr) && !AudioPlayer::isPlaying() && UdpDiscovery::hasServer();
-  bool canPlayAutoTest = fromAutoTest && UdpDiscovery::hasServer();
+  bool canPlayNormal = (fromButton || fromAsr) && !AudioPlayer::isPlaying() && serverReady();
+  bool canPlayAutoTest = fromAutoTest && serverReady();
   if (canPlayNormal || canPlayAutoTest) {
     if (singleBtnVoiceThenMonitor) voicePlaybackStarted = true;
     lastAudioTriggerTime = 0;
@@ -280,7 +338,7 @@ void loop() {
     if (canPlayAutoTest) {
       Serial.printf("[AUDIO-TEST] forcing playback (isPlaying=%d)\n", AudioPlayer::isPlaying() ? 1 : 0);
     }
-    AudioPlayer::playFromServer(UdpDiscovery::getServerIP());
+    AudioPlayer::playFromServer(serverAddr());
   }
 
   if (singleBtnVoiceThenMonitor && voicePlaybackStarted && !AudioPlayer::isPlaying()) {

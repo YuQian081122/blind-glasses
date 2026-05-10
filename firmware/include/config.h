@@ -71,8 +71,16 @@
 #define IMU_TEST_FAIL_THROTTLE_MS          2000  // 讀取失敗/初始化失敗的節流輸出
 
 // ============ 麥克風 (PDM) ============
-#define MIC_RECORD_SEC     4
+// MIC_RECORD_SEC：錄音秒數，直接影響延遲與 ASR 辨識率
+//   - 2 秒：低延遲模式，適合安靜/短指令（如「紅綠燈」「現在在哪」）
+//   - 3 秒：均衡模式，噪音稍多時仍可辨識完整句子
+//   - 4 秒：高穩定模式，嘈雜環境（馬路邊）建議使用
+#define MIC_RECORD_SEC     2
 #define MIC_SAMPLE_RATE    16000
+
+// 無按鍵時自動測麥克風→ASR→TTS 全鏈路（1=啟用；正式使用請改 0）
+#define MIC_AUTO_TEST_ENABLE        0
+#define MIC_AUTO_TEST_INTERVAL_MS   15000
 
 // ============ 按鈕 - 單一按鈕手勢 ============
 #define BTN_ITEM_PIN       -1
@@ -80,7 +88,23 @@
 #define BTN_TRIPLE_CLICK_MS  600   // 三擊間隔
 
 // ============ 伺服器 API ============
-#define SERVER_HTTP_PORT    5000  // 與 server/config.py HTTP_PORT 一致；正式環境可改 80
+// --- 雲端模式（Cloudflare Tunnel） ---
+// CLOUD_MODE=1：ESP32 透過 HTTPS 連到 blind-glasses.org（不需 UDP 探索）
+// CLOUD_MODE=0：區網模式，維持 UDP 探索 + HTTP 直連 IP
+#define CLOUD_MODE          0
+
+#if CLOUD_MODE
+  #define SERVER_HOST         "blind-glasses.org"
+  #define SERVER_HTTP_PORT    443
+  #define SERVER_USE_HTTPS    1
+  #define DEVICE_API_TOKEN    ""   // 若 server 設有 token 驗證，填在這裡
+#else
+  #define SERVER_HOST         ""   // 區網模式不使用 hostname（由 UDP 探索取得 IP）
+  #define SERVER_HTTP_PORT    5000
+  #define SERVER_USE_HTTPS    0
+  #define DEVICE_API_TOKEN    ""
+#endif
+
 #define API_GEMINI_PATH     "/api/gemini"
 #define API_ASR_PATH        "/api/asr"
 #define API_IMU_PATH        "/api/imu"
@@ -102,7 +126,11 @@
 #define AUDIO_AUTO_TEST_INTERVAL_MS  10000
 
 #define API_AUDIO_PATH      "/audio/latest"
-#define API_TIMEOUT_MS      15000
+// API_TIMEOUT_MS：HTTP 請求超時
+//   - 5000：低延遲模式，快速失敗重試（WiFi 良好時推薦）
+//   - 8000：均衡模式，容許偶爾的網路抖動
+//   - 12000：高穩定模式，弱網環境避免頻繁超時
+#define API_TIMEOUT_MS      5000
 #define AUDIO_POLL_INTERVAL_MS  500
 
 // ============ BLE 快速連接（S3 可用） ============

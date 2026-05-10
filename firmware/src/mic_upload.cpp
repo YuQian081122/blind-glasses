@@ -4,8 +4,12 @@
 
 #include "mic_upload.h"
 #include "config.h"
+#if !CLOUD_MODE
 #include "udp_discovery.h"
+#endif
 #include "server_api.h"
+#include "http_task_queue.h"
+#include <WiFi.h>
 
 #include <driver/i2s.h>
 #include <esp_heap_caps.h>
@@ -26,6 +30,7 @@ namespace MicUpload {
   static size_t pcmBytesRecorded = 0;
   static bool pendingAudioFetch = false;
   static unsigned long uploadCompleteTime = 0;
+  static unsigned long taskDoneTime = 0;
 
   static void writeWavHeader(uint8_t* buf, uint32_t sampleRate, uint32_t numSamples) {
     uint32_t byteRate = sampleRate * 2;  // 16-bit mono
@@ -104,15 +109,25 @@ namespace MicUpload {
 
   void clearPendingAudioFetch() {
     pendingAudioFetch = false;
+    taskDoneTime = 0;
   }
 
   bool shouldFetchAudio() {
     if (!pendingAudioFetch || uploadCompleteTime == 0) return false;
-    return (millis() - uploadCompleteTime) >= 2000;
+    if (HttpTaskQueue::isBusy()) return false;
+    if (!HttpTaskQueue::hasCompletedSinceEnqueue()) {
+      return (millis() - uploadCompleteTime) >= 8000;
+    }
+    if (taskDoneTime == 0) taskDoneTime = millis();
+    return (millis() - taskDoneTime) >= 300;
   }
 
   void startRecording() {
+#if CLOUD_MODE
+    if (!micDriverOk || WiFi.status() != WL_CONNECTED || recording) return;
+#else
     if (!micDriverOk || !UdpDiscovery::hasServer() || recording) return;
+#endif
 
     const size_t pcmSize = (size_t)MIC_SAMPLE_RATE * MIC_RECORD_SEC * 2;
     pcmBuffer = (uint8_t*)heap_caps_malloc(pcmSize, MALLOC_CAP_SPIRAM);
@@ -155,9 +170,15 @@ namespace MicUpload {
       writeWavHeader(wavBuffer, MIC_SAMPLE_RATE, numSamples);
       memcpy(wavBuffer + 44, pcmBuffer, pcmBytesRecorded);
 
-      ServerAPI::uploadAudio(UdpDiscovery::getServerIP(), wavBuffer, wavLen);
+      HttpTaskQueue::clearCompleted();
+#if CLOUD_MODE
+      HttpTaskQueue::enqueueAsr(IPAddress(1, 1, 1, 1), wavBuffer, wavLen);
+#else
+      HttpTaskQueue::enqueueAsr(UdpDiscovery::getServerIP(), wavBuffer, wavLen);
+#endif
       pendingAudioFetch = true;
       uploadCompleteTime = millis();
+      taskDoneTime = 0;
       free(wavBuffer);
       free(pcmBuffer);
       pcmBuffer = nullptr;

@@ -16,7 +16,10 @@ namespace AudioPlayer {
 #endif
 
   static void buildAudioUrl(IPAddress serverIP, char* out, size_t outLen) {
-#if SERVER_HTTP_PORT == 80
+#if CLOUD_MODE
+    snprintf(out, outLen, "https://%s%s", SERVER_HOST, API_AUDIO_PATH);
+    (void)serverIP;
+#elif SERVER_HTTP_PORT == 80
     snprintf(out, outLen, "http://%d.%d.%d.%d%s",
              serverIP[0], serverIP[1], serverIP[2], serverIP[3], API_AUDIO_PATH);
 #else

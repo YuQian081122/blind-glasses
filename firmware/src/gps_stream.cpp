@@ -10,6 +10,9 @@
 #include <HardwareSerial.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#if SERVER_USE_HTTPS
+#include <WiFiClientSecure.h>
+#endif
 
 #include <TinyGPSPlus.h>
 
@@ -43,7 +46,11 @@ namespace GpsStream {
       yield();
     }
 
+#if !CLOUD_MODE
     if (serverIP == IPAddress(0, 0, 0, 0) || !gps.location.isValid()) return;
+#else
+    if (!gps.location.isValid()) return;
+#endif
 
     unsigned long now = millis();
     unsigned long interval = GPS_SEND_INTERVAL_MS;
@@ -53,8 +60,10 @@ namespace GpsStream {
     if (now - lastSendTime < interval) return;
     lastSendTime = now;
 
-    char url[80];
-#if SERVER_HTTP_PORT == 80
+    char url[128];
+#if CLOUD_MODE
+    snprintf(url, sizeof(url), "https://%s%s", SERVER_HOST, API_GPS_PATH);
+#elif SERVER_HTTP_PORT == 80
     snprintf(url, sizeof(url), "http://%d.%d.%d.%d%s",
              serverIP[0], serverIP[1], serverIP[2], serverIP[3], API_GPS_PATH);
 #else
@@ -72,8 +81,18 @@ namespace GpsStream {
     serializeJson(doc, body);
 
     HTTPClient http;
+#if SERVER_USE_HTTPS
+    WiFiClientSecure client;
+    client.setInsecure();
+    http.begin(client, url);
+#else
     http.begin(url);
+#endif
     http.addHeader("Content-Type", "application/json");
+#if CLOUD_MODE
+    const char* devToken = DEVICE_API_TOKEN;
+    if (devToken && devToken[0]) http.addHeader("X-Device-Token", devToken);
+#endif
     http.setTimeout(3000);
     http.POST(body);
     http.end();
