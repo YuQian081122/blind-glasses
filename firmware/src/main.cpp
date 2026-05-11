@@ -1,6 +1,6 @@
 /**
- * AI 智慧導盲眼鏡 - 主程式
- * 按鍵：電源鍵短按=紅綠燈、長按=開關機；切換鍵短按=模式、長按=AI 語音助理
+ * 智慧導盲眼鏡 - 主程式
+ * 按鍵：電源鍵短按=紅綠燈、長按=開關機；切換鍵短按=模式、長按=語音助理
  */
 
 #include <Arduino.h>
@@ -126,7 +126,7 @@ void triggerFindAlert(unsigned long durationMs) {
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  Serial.println("\n=== AI Smart Blind Glasses ===");
+  Serial.println("\n=== Smart Blind Glasses ===");
 
 #if GPIO1_TOGGLE_TEST_ENABLE
   pinMode(GPIO1_TOGGLE_TEST_PIN, OUTPUT);

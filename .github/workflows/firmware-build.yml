@@ -4,22 +4,25 @@ on:
   push:
     branches: [main]
     paths:
-      - "include/**"
-      - "src/**"
-      - "platformio.ini"
-      - "sdkconfig.defaults.template"
+      - "firmware/include/**"
+      - "firmware/src/**"
+      - "firmware/platformio.ini"
+      - "firmware/sdkconfig.defaults.template"
       - ".github/workflows/firmware-build.yml"
   pull_request:
     paths:
-      - "include/**"
-      - "src/**"
-      - "platformio.ini"
-      - "sdkconfig.defaults.template"
+      - "firmware/include/**"
+      - "firmware/src/**"
+      - "firmware/platformio.ini"
+      - "firmware/sdkconfig.defaults.template"
       - ".github/workflows/firmware-build.yml"
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: firmware
     steps:
       - name: Checkout
         uses: actions/checkout@v4

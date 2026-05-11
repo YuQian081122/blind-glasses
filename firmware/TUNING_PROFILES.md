@@ -26,7 +26,7 @@
 
 ## 切換方式
 
-修改倉庫根目錄的 `include/config.h` 中對應的 `#define`，重新編譯上傳。
+修改與 `platformio.ini` 同層之 `include/config.h` 內對應的 `#define`，重新編譯上傳。
 
 ## 驗證方法
 

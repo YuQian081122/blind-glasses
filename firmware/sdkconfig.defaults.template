@@ -1,4 +1,4 @@
-# AI 智慧導盲眼鏡 - ESP32 設定範本
+# 智慧導盲眼鏡 - ESP32 設定範本
 # 複製為 sdkconfig.defaults 並修改 WiFi 等
 
 # OV3660 需要 OCTAL PSRAM
