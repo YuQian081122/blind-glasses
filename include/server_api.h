@@ -18,6 +18,9 @@ namespace ServerAPI {
   // 上傳 WAV 至 ASR (POST /api/asr)
   bool uploadAudio(IPAddress serverIP, const uint8_t* data, size_t len);
 
+  // 推送 JPEG 幀到伺服器 (POST /api/frame)
+  bool pushFrame(IPAddress serverIP, const uint8_t* jpegBuf, size_t jpegLen);
+
 }  // namespace ServerAPI
 
 #endif  // SERVER_API_H

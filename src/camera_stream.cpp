@@ -58,7 +58,7 @@ static esp_err_t streamHandler(httpd_req_t* req) {
       _jpg_buf_len = fb->len;
       _jpg_buf = fb->buf;
     } else {
-      bool jpeg_converted = frame2jpg(fb, 12, &_jpg_buf, &_jpg_buf_len);
+      bool jpeg_converted = frame2jpg(fb, CAMERA_JPEG_QUALITY, &_jpg_buf, &_jpg_buf_len);
       if (!jpeg_converted) {
         esp_camera_fb_return(fb);
         Serial.println("[CAM] JPEG convert failed");
@@ -140,10 +140,12 @@ bool CameraStream::begin() {
   config.ledc_timer = LEDC_TIMER_0;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.pixel_format = PIXFORMAT_JPEG;
-  // 低延遲優先：QVGA 可大幅降低單幀體積與傳輸時間，監控頁更新更順
-  config.frame_size = FRAMESIZE_QVGA;  // 320x240
-  // 數值越小畫質越好但資料更大；這裡取中間偏低延遲
-  config.jpeg_quality = 18;
+#if CAMERA_FRAMESIZE_VGA
+  config.frame_size = FRAMESIZE_VGA;  // 640×480，監控較清晰
+#else
+  config.frame_size = FRAMESIZE_QVGA;  // 320×240，較省頻寬
+#endif
+  config.jpeg_quality = CAMERA_JPEG_QUALITY;
   config.fb_count = 2;                 // OV3660 建議 2
   config.fb_location = CAMERA_FB_IN_PSRAM;
   // 低延遲模式：優先抓最新幀，避免管線累積造成 1~2 秒延遲
@@ -170,4 +172,39 @@ bool CameraStream::begin() {
 
 bool CameraStream::isReady() {
   return streamReady;
+}
+
+static camera_fb_t* _pushFb = nullptr;
+static uint8_t* _pushConvertedBuf = nullptr;
+
+bool CameraStream::captureJpeg(const uint8_t** outBuf, size_t* outLen) {
+  if (!streamReady || !outBuf || !outLen) return false;
+  _pushFb = esp_camera_fb_get();
+  if (!_pushFb) return false;
+  if (_pushFb->format == PIXFORMAT_JPEG) {
+    *outBuf = _pushFb->buf;
+    *outLen = _pushFb->len;
+  } else {
+    _pushConvertedBuf = nullptr;
+    size_t convertedLen = 0;
+    if (!frame2jpg(_pushFb, CAMERA_JPEG_QUALITY, &_pushConvertedBuf, &convertedLen)) {
+      esp_camera_fb_return(_pushFb);
+      _pushFb = nullptr;
+      return false;
+    }
+    *outBuf = _pushConvertedBuf;
+    *outLen = convertedLen;
+  }
+  return true;
+}
+
+void CameraStream::releaseFrame() {
+  if (_pushConvertedBuf) {
+    free(_pushConvertedBuf);
+    _pushConvertedBuf = nullptr;
+  }
+  if (_pushFb) {
+    esp_camera_fb_return(_pushFb);
+    _pushFb = nullptr;
+  }
 }

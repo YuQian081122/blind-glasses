@@ -9,8 +9,8 @@
 #include <Arduino.h>
 
 // ============ WiFi ============
-#define WIFI_SSID       "奇異鳥吃飛魚"
-#define WIFI_PASSWORD   "11091122"
+#define WIFI_SSID       "ychn._08"
+#define WIFI_PASSWORD   "0980915SIT"
 #define WIFI_MAX_RETRY  20
 
 // ============ UDP 探索 ============
@@ -91,24 +91,47 @@
 // --- 雲端模式（Cloudflare Tunnel） ---
 // CLOUD_MODE=1：ESP32 透過 HTTPS 連到 blind-glasses.org（不需 UDP 探索）
 // CLOUD_MODE=0：區網模式，維持 UDP 探索 + HTTP 直連 IP
-#define CLOUD_MODE          0
+#define CLOUD_MODE          1
 
 #if CLOUD_MODE
   #define SERVER_HOST         "blind-glasses.org"
   #define SERVER_HTTP_PORT    443
   #define SERVER_USE_HTTPS    1
-  #define DEVICE_API_TOKEN    ""   // 若 server 設有 token 驗證，填在這裡
+  #define DEVICE_API_TOKEN    "0QchQE-fzMg5yg-1GHu-3-J7tfgqtsDA2J-pKPcMBu4"   // 須與 server/.env 的 DEVICE_API_TOKEN 相同
+  // 非空時：每次 IMU 帶此「網際網路可連」的 MJPEG 完整 URL（例：ngrok / trycloudflare 指到眼鏡 :81/stream）。勿填 blind-glasses.org/stream。
+  // 空 + DEVICE_STREAM_REPORT_LAN_URL=1：自動帶 http://區網IP:81/stream（僅當「跑伺服器的電腦」與眼鏡同一區網時，家裡監控才拉得到畫面）。
+  // 帶出門連別人 WiFi、又無法改伺服器：家裡伺服器無法連對方區網 IP；要畫面只能在此填「公開 tunnel URL」並重燒韌體，或接受僅 API/無監控影像。
+  #define DEVICE_PUBLIC_STREAM_URL    ""
+  // 1=且 DEVICE_PUBLIC_STREAM_URL 為空時，自動帶區網串流 URL 給伺服器
+  #define DEVICE_STREAM_REPORT_LAN_URL  1
 #else
   #define SERVER_HOST         ""   // 區網模式不使用 hostname（由 UDP 探索取得 IP）
   #define SERVER_HTTP_PORT    5000
   #define SERVER_USE_HTTPS    0
-  #define DEVICE_API_TOKEN    ""
+  #define DEVICE_API_TOKEN    "0QchQE-fzMg5yg-1GHu-3-J7tfgqtsDA2J-pKPcMBu4"
+  #define DEVICE_PUBLIC_STREAM_URL    ""
+  #define DEVICE_STREAM_REPORT_LAN_URL  0
 #endif
 
 #define API_GEMINI_PATH     "/api/gemini"
 #define API_ASR_PATH        "/api/asr"
 #define API_IMU_PATH        "/api/imu"
 #define API_GPS_PATH        "/api/gps"
+#define API_FRAME_PATH      "/api/frame"
+
+// ============ 相機（推幀與 :81/stream 共用）============
+// esp32-camera：jpeg_quality 數值越小畫質越好、單幀越大、上傳越慢（約 4–63，建議 8–15）
+#define CAMERA_JPEG_QUALITY         10
+// 1=VGA 640×480（較清晰）；0=QVGA 320×240（較省頻寬、推幀較快）
+#define CAMERA_FRAMESIZE_VGA        1
+
+// ============ 影像推幀（Frame Push）============
+// 眼鏡主動 POST JPEG 到伺服器，不需伺服器能連到眼鏡區網；出門連任何有網的 WiFi 都有畫面
+#define FRAME_PUSH_ENABLE         1
+// 間隔越小幀率越高；實際 fps 受 JPEG 大小與 HTTPS 上傳時間限制（VGA 約 150–250ms 較常見）
+#define FRAME_PUSH_INTERVAL_MS    150
+// 高解析 JPEG + 雲端 TLS 單次 POST 可能較久，勿與 IMU 等短逾時共用
+#define FRAME_PUSH_HTTP_TIMEOUT_MS  15000
 // 與板載 D6/D7 一致：TX=GPIO43、RX=GPIO44（HardwareSerial: RX, TX 順序見 gps_stream.cpp）
 #define GPS_TX_PIN          43   // D6 → ESP UART TX → GPS RX
 #define GPS_RX_PIN          44   // D7 → ESP UART RX ← GPS TX
@@ -118,11 +141,11 @@
 
 // 僅使用相機+陀螺儀時：可關閉 GPS UART；音訊測試時請開啟 I2S 喇叭
 #define GPS_ENABLE          0   // 1=啟用 NEO-M8N 串流；0=不初始化 GPS UART
-#define AUDIO_I2S_ENABLE    1   // 1=MAX98357A 播放；0=不佔用 I2S1（PDM 麥克風仍為 I2S0）
+#define AUDIO_I2S_ENABLE    0   // 1=MAX98357A 播放；0=不佔用 I2S1（僅測 WiFi 時建議 0）
 
 // ============ 音訊自動測試（不需按鈕） ============
 // 1=每隔固定秒數自動抓一次 /audio/latest 測 MAX98357 播放鏈路
-#define AUDIO_AUTO_TEST_ENABLE       1
+#define AUDIO_AUTO_TEST_ENABLE       0
 #define AUDIO_AUTO_TEST_INTERVAL_MS  10000
 
 #define API_AUDIO_PATH      "/audio/latest"
@@ -134,7 +157,8 @@
 #define AUDIO_POLL_INTERVAL_MS  500
 
 // ============ BLE 快速連接（S3 可用） ============
-#define BLE_QUICK_LINK_ENABLE         1
+// 僅測 WiFi 時可設 0（少一個射頻、Serial 較乾淨）；要用手機 BLE 配網請改 1
+#define BLE_QUICK_LINK_ENABLE         0
 #define BLE_DEVICE_NAME               "BlindGlasses-S3"
 #define BLE_SERVICE_UUID              "6f2f6d30-4d57-4c76-a5dd-86f4d2a06340"
 #define BLE_WIFI_SSID_UUID            "6f2f6d31-4d57-4c76-a5dd-86f4d2a06340"
@@ -146,12 +170,14 @@
 #define BLE_VOLUME_UUID               "6f2f6d37-4d57-4c76-a5dd-86f4d2a06340"
 #define BLE_STATUS_NOTIFY_MS          1000
 
-// ============ 相機啟動 ============
+// ============ 相機 ============
+// 0=完全不初始化相機（僅測 WiFi／除錯）；1=依下方與模式決定何時開
+#define CAMERA_ENABLE         1
 // 1=開機且 WiFi 連上後立即啟動串流（即使省電 + 單一按鈕模式）；0=維持省電延後開相機（按鍵或切換持續監測後才開）
 #define CAMERA_START_ON_BOOT  1
 
 // ============ 省電 ============
-#define POWER_SAVE_ENABLE   1     // 1=啟用省電（單一按鈕時不開相機、WiFi modem sleep、閒置延遲）
+#define POWER_SAVE_ENABLE   0     // 1=啟用省電（單一按鈕時不開相機、WiFi modem sleep、閒置延遲）
 // 若監控頁陀螺儀永遠為「-」，常因 modem sleep 導致 POST /api/imu 失敗；先設 0 再試
 #define WIFI_MODEM_SLEEP    0     // 1=WiFi 閒置 modem sleep（易影響 IMU HTTP 上傳）
 #define LOOP_IDLE_MS        50    // 無工作時 loop 延遲 ms（省電時拉長，預設 50）

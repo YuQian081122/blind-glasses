@@ -8,6 +8,8 @@
 
 #if SERVER_USE_HTTPS
 #include <WiFiClientSecure.h>
+#else
+#include <WiFiClient.h>
 #endif
 
 namespace ServerAPI {
@@ -116,6 +118,68 @@ namespace ServerAPI {
       return true;
     }
     Serial.printf("[LAT] ASR upload FAIL(%d): %dms\n", code, (int)elapsed);
+    return false;
+  }
+
+  static bool _framePushLoggedOk = false;
+
+  // 重用同一條 TCP/TLS 連線推幀，避免每幀完整 TLS 握手（否則延遲常達 1～2 秒）
+#if SERVER_USE_HTTPS
+  static WiFiClientSecure s_frameTls;
+#else
+  static WiFiClient s_frameTls;
+#endif
+  static HTTPClient s_frameHttp;
+  static bool s_frameHttpOpen = false;
+
+  static void _framePushClose() {
+    s_frameHttp.end();
+    s_frameHttpOpen = false;
+  }
+
+  static bool _framePushEnsure(const char* url) {
+    if (s_frameHttpOpen && s_frameTls.connected()) return true;
+    _framePushClose();
+#if SERVER_USE_HTTPS
+    s_frameTls.setInsecure();
+#endif
+    s_frameHttp.setReuse(true);
+    s_frameHttp.setConnectTimeout(8000);
+    s_frameHttp.setTimeout(FRAME_PUSH_HTTP_TIMEOUT_MS);
+    if (!s_frameHttp.begin(s_frameTls, url)) return false;
+    s_frameHttp.addHeader("Content-Type", "image/jpeg");
+    addDeviceToken(s_frameHttp);
+    s_frameHttpOpen = true;
+    return true;
+  }
+
+  bool pushFrame(IPAddress serverIP, const uint8_t* jpegBuf, size_t jpegLen) {
+#if !CLOUD_MODE
+    if (serverIP == IPAddress(0, 0, 0, 0) || !jpegBuf || jpegLen == 0) return false;
+#else
+    if (!jpegBuf || jpegLen == 0) return false;
+#endif
+
+    char url[128];
+    buildUrl(url, sizeof(url), serverIP, API_FRAME_PATH, nullptr);
+
+    if (!_framePushEnsure(url)) {
+      Serial.println("[FRAME-PUSH] begin failed");
+      return false;
+    }
+
+    int code = s_frameHttp.POST(const_cast<uint8_t*>(jpegBuf), jpegLen);
+    if (code > 0 && code < 400) {
+      (void)s_frameHttp.getString();  // 讀完回應本體，利於 Keep-Alive 重用連線
+      if (!_framePushLoggedOk) {
+        _framePushLoggedOk = true;
+        Serial.printf("[FRAME-PUSH] OK (keep-alive, %u bytes)\n", (unsigned)jpegLen);
+      }
+      return true;
+    }
+
+    _framePushClose();
+    Serial.printf("[FRAME-PUSH] FAIL(%d) %u bytes\n", code, (unsigned)jpegLen);
     return false;
   }
 

@@ -9,11 +9,12 @@
 
 namespace CameraStream {
 
-  // 初始化相機與 HTTP 串流伺服器
   bool begin();
-
-  // 是否已就緒
   bool isReady();
+
+  // 拍一張 JPEG 供推幀用；成功時 *outBuf / *outLen 有效，用完須呼叫 releaseFrame()
+  bool captureJpeg(const uint8_t** outBuf, size_t* outLen);
+  void releaseFrame();
 
 }  // namespace CameraStream
 

@@ -41,6 +41,9 @@ static unsigned long lastAutoAudioTestTime = 0;
 #if MIC_AUTO_TEST_ENABLE
 static unsigned long lastMicAutoTestTime = 0;
 #endif
+#if FRAME_PUSH_ENABLE && CAMERA_ENABLE
+static unsigned long lastFramePushMs = 0;
+#endif
 static bool singleBtnVoiceThenMonitor = false;
 static bool voicePlaybackStarted = false;
 static unsigned long gpio1ToggleMs = 0;
@@ -74,11 +77,24 @@ void setupWifi() {
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
     // modem sleep 延後到 setup() 尾端，避免與 UDP/I2S/相機初始化衝突觸發 TWDT
+#if CLOUD_MODE
+    Serial.print("API host: https://");
+    Serial.println(SERVER_HOST);
+    Serial.print("Monitor (browser): https://");
+    Serial.print(SERVER_HOST);
+    Serial.println("/monitor");
+    Serial.print("Local MJPEG (LAN only): http://");
+    Serial.print(WiFi.localIP());
+    Serial.print(":");
+    Serial.print(STREAM_PORT);
+    Serial.println(STREAM_PATH);
+#else
     Serial.print("Stream URL: http://");
     Serial.print(WiFi.localIP());
     Serial.print(":");
     Serial.print(STREAM_PORT);
     Serial.println(STREAM_PATH);
+#endif
   } else {
     Serial.println();
     Serial.println("WiFi connect failed!");
@@ -146,20 +162,23 @@ void setup() {
   esp_task_wdt_reset();
 
   if (WiFi.status() == WL_CONNECTED) {
-#if POWER_SAVE_ENABLE
+#if !CAMERA_ENABLE
+    Serial.println("[CAM] Disabled (CAMERA_ENABLE=0)");
+#else
     const bool startCam = OpMode::isAlwaysOn() || (CAMERA_START_ON_BOOT);
     if (!startCam) {
+#if POWER_SAVE_ENABLE
       Serial.println("[PWR] Camera off in SINGLE_BTN (power save)");
-    } else
+#else
+      Serial.println("[CAM] Skipped at boot (CAMERA_START_ON_BOOT=0, single-btn)");
 #endif
-    {
-      if (CameraStream::begin()) {
-        Serial.println("[CAM] Ready");
-      } else {
-        Serial.println("[CAM] Init failed");
-      }
-      esp_task_wdt_reset();
+    } else if (CameraStream::begin()) {
+      Serial.println("[CAM] Ready");
+    } else {
+      Serial.println("[CAM] Init failed");
     }
+    esp_task_wdt_reset();
+#endif
   }
   ImuStream::begin();
   esp_task_wdt_reset();
@@ -241,7 +260,7 @@ void loop() {
   if (BleQuickLink::consumeModeRequest(bleOpMode, bleTaskMode, hasBleTaskMode)) {
     OpMode::set(bleOpMode);
     Serial.printf("[BLE] Apply op_mode: %s\n", OpMode::isSingleButton() ? "SINGLE_BTN" : "ALWAYS_ON");
-#if POWER_SAVE_ENABLE
+#if POWER_SAVE_ENABLE && CAMERA_ENABLE
     if (OpMode::isAlwaysOn() && !CameraStream::isReady() && WiFi.status() == WL_CONNECTED) {
       if (CameraStream::begin()) Serial.println("[CAM] Ready (ble mode)");
     }
@@ -266,6 +285,19 @@ void loop() {
     GpsStream::setServerIP(ip);
     ImuStream::tick();
     GpsStream::tick();
+
+#if FRAME_PUSH_ENABLE && CAMERA_ENABLE
+    if (CameraStream::isReady() &&
+        (millis() - lastFramePushMs >= FRAME_PUSH_INTERVAL_MS)) {
+      lastFramePushMs = millis();
+      const uint8_t* jpegBuf = nullptr;
+      size_t jpegLen = 0;
+      if (CameraStream::captureJpeg(&jpegBuf, &jpegLen)) {
+        ServerAPI::pushFrame(ip, jpegBuf, jpegLen);
+        CameraStream::releaseFrame();
+      }
+    }
+#endif
   }
 
   ButtonEvent evt = ButtonHandler::tick();
@@ -277,14 +309,14 @@ void loop() {
     esp_deep_sleep_start();
   } else if (evt == ButtonEvent::ModeSwitch) {
     OpMode::toggle();
-#if POWER_SAVE_ENABLE
+#if POWER_SAVE_ENABLE && CAMERA_ENABLE
     if (OpMode::isAlwaysOn() && !CameraStream::isReady() && WiFi.status() == WL_CONNECTED) {
       if (CameraStream::begin()) Serial.println("[CAM] Ready (mode switch)");
     }
 #endif
   } else if (evt != ButtonEvent::None && serverReady()) {
     IPAddress ip = serverAddr();
-#if POWER_SAVE_ENABLE
+#if POWER_SAVE_ENABLE && CAMERA_ENABLE
     if (OpMode::isSingleButton() && !CameraStream::isReady() && WiFi.status() == WL_CONNECTED) {
       if (evt == ButtonEvent::TrafficShort || evt == ButtonEvent::SceneryLong) {
         if (CameraStream::begin()) Serial.println("[CAM] Ready (first use)");
@@ -345,7 +377,7 @@ void loop() {
     singleBtnVoiceThenMonitor = false;
     voicePlaybackStarted = false;
     OpMode::set(OP_MODE_ALWAYS_ON);
-#if POWER_SAVE_ENABLE
+#if POWER_SAVE_ENABLE && CAMERA_ENABLE
     if (!CameraStream::isReady() && CameraStream::begin()) {
       Serial.println("[CAM] Ready (power save -> ALWAYS_ON)");
     }

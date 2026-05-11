@@ -238,6 +238,28 @@ namespace ImuStream {
 #if CLOUD_MODE
     const char* devToken = DEVICE_API_TOKEN;
     if (devToken && devToken[0]) http.addHeader("X-Device-Token", devToken);
+    {
+      const char* pubUrl = DEVICE_PUBLIC_STREAM_URL;
+      if (pubUrl && pubUrl[0]) {
+        http.addHeader("X-Device-Stream-Url", pubUrl);
+      } else if (DEVICE_STREAM_REPORT_LAN_URL) {
+        IPAddress lip = WiFi.localIP();
+        if (lip != IPAddress(0, 0, 0, 0)) {
+          char streamHdrBuf[96];
+          snprintf(
+              streamHdrBuf,
+              sizeof(streamHdrBuf),
+              "http://%u.%u.%u.%u:%d%s",
+              lip[0],
+              lip[1],
+              lip[2],
+              lip[3],
+              STREAM_PORT,
+              STREAM_PATH);
+          http.addHeader("X-Device-Stream-Url", streamHdrBuf);
+        }
+      }
+    }
 #endif
     http.setTimeout(2000);
 #if POWER_SAVE_ENABLE && WIFI_MODEM_SLEEP
