@@ -157,8 +157,9 @@
 #define AUDIO_POLL_INTERVAL_MS  500
 
 // ============ BLE 快速連接（S3 可用） ============
-// 僅測 WiFi 時可設 0（少一個射頻、Serial 較乾淨）；要用手機 BLE 配網請改 1
-#define BLE_QUICK_LINK_ENABLE         0
+// 出廠／實測／搭配 App 掃描配網：必須為 1，否則手機掃不到 BLE、無 GATT。
+// 僅本機除錯「只要 WiFi、不要 BLE」時可暫改 0（少一個射頻、Serial 較乾淨）。
+#define BLE_QUICK_LINK_ENABLE         1
 #define BLE_DEVICE_NAME               "BlindGlasses-S3"
 #define BLE_SERVICE_UUID              "6f2f6d30-4d57-4c76-a5dd-86f4d2a06340"
 #define BLE_WIFI_SSID_UUID            "6f2f6d31-4d57-4c76-a5dd-86f4d2a06340"
